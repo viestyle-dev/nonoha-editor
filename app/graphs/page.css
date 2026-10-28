@@ -1,0 +1,17 @@
+.react-flow.dark {
+  /* --xy-node-background-color-default: #ff5050; */
+  --xy-edge-stroke-width-default: 4;
+  --xy-connectionline-stroke-width-default: 4;
+  --xy-background-color-default: transparent;
+}
+
+.react-flow {
+  --xy-edge-stroke-width-default: 4;
+  --xy-connectionline-stroke-width-default: 4;
+  --xy-background-color-default: transparent;
+}
+
+.react-flow__node-GraphNode,
+.react-flow__node-CommentNode {
+  pointer-events: none !important;
+}

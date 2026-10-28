@@ -1,0 +1,3 @@
+[submodule "packages/nonoha-client-js"]
+	path = packages/nonoha-client-js
+	url = https://github.com/viestyle-dev/nonoha-client-js.git

@@ -1,0 +1,55 @@
+{
+  "name": "nonoha-editor",
+  "version": "0.11.0-alpha.7",
+  "private": true,
+  "license": "Apache-2.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run build:deps && next dev",
+    "build": "npm run build:deps && next build",
+    "build:deps": "npm run build --workspaces --if-present",
+    "dev:watch": "concurrently \"npm run dev:deps\" \"next dev\"",
+    "dev:deps": "npm run dev --workspaces --if-present",
+    "start": "next start",
+    "lint": "next lint",
+    "clean": "npm run clean --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@emotion/cache": "^11.13.1",
+    "@emotion/css": "^11.13.4",
+    "@emotion/react": "^11.13.3",
+    "@emotion/styled": "^11.13.0",
+    "@material/material-color-utilities": "^0.3.0",
+    "@mui/icons-material": "^6.1.6",
+    "@mui/material": "^6.1.6",
+    "@mui/material-nextjs": "^6.1.6",
+    "@tanstack/react-virtual": "^3.13.23",
+    "@xyflow/react": "^12.3.4",
+    "next": "14.2.17",
+    "nonoha-client-js": "workspace:*",
+    "notistack": "^3.0.1",
+    "plotly.js": "^3.3.1",
+    "plotly.js-dist-min": "^3.3.1",
+    "react": "^18",
+    "react-dom": "^18",
+    "react-plotly.js": "^2.6.0",
+    "uplot": "^1.6.32"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/plotly.js": "^3.0.9",
+    "@types/plotly.js-dist-min": "^2.3.4",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@types/react-plotly.js": "^2.6.3",
+    "concurrently": "^8.0.0",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.17",
+    "typescript": "^5",
+    "vitest": "^2.1.9"
+  }
+}
