@@ -1,6 +1,6 @@
 {
   "name": "nonoha-editor",
-  "version": "0.11.0-alpha.7",
+  "version": "1.0.0",
   "private": true,
   "license": "Apache-2.0",
   "workspaces": [
