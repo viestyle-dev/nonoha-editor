@@ -30,7 +30,7 @@ function compare(a: [number, number, number], b: [number, number, number]): numb
  * @param version engine version from capabilities; undefined while loading
  * @param capabilities "loading" | "none" (endpoint missing) | "error" | "ok"
  */
-export function checkEngineCompat(
+export function engineCompatStatus(
   version: string | undefined,
   capabilities: "loading" | "none" | "error" | "ok",
 ): EngineCompatStatus {
@@ -62,6 +62,6 @@ export function describeCompat(status: EngineCompatStatus, version: string | und
     case "unreachable":
       return "The engine could not be reached."
     default:
-      return "Checking…"
+      return "Connecting…"
   }
 }

@@ -2,7 +2,7 @@
 
 import { css } from "@emotion/react"
 import { Button, Dialog, DialogActions, DialogContent, Paper, Typography } from "@mui/material"
-import { CheckCircleOutline, ErrorOutline, InfoOutlined, WarningAmber } from "@mui/icons-material"
+import { ErrorOutline, InfoOutlined, TaskAlt, WarningAmber } from "@mui/icons-material"
 import { useMemo } from "react"
 
 import { useThemeStore } from "@/src/stores/theme-store"
@@ -69,7 +69,7 @@ export function AboutDialog({
 
   const compatIcon =
     engine.compat === "ok" ? (
-      <CheckCircleOutline fontSize="inherit" style={{ color: colors.primary }} />
+      <TaskAlt fontSize="inherit" style={{ color: colors.primary }} />
     ) : engine.compat === "too_old" || engine.compat === "too_new" ? (
       <WarningAmber fontSize="inherit" style={{ color: colors.tertiary }} />
     ) : engine.compat === "unreachable" ? (

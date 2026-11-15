@@ -41,7 +41,7 @@ export interface EditorNodesDocument {
   nodes: EditorNodeSpec[]
 }
 
-// JSON imports infer a union per entry; the shape is checked by the specs test.
+// JSON imports infer a union per entry; the specs test verifies the shape.
 export const EDITOR_NODES_DOCUMENT = editorNodes as unknown as EditorNodesDocument
 
 export const EDITOR_NODE_SPECS: readonly EditorNodeSpec[] = EDITOR_NODES_DOCUMENT.nodes

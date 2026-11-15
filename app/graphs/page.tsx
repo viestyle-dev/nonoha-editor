@@ -121,6 +121,7 @@ import {
 } from "@/src/inspector/inspector-store"
 import { InspectorStatusButton } from "@/src/inspector/inspector-status-button"
 import { EngineAboutControls } from "@/src/components/engine-about"
+import { EnvSettingsDialog, EnvSettingsMenuItem } from "@/src/components/env-settings-dialog"
 import { ViewCatalogProvider, useViewCatalog } from "@/src/views/view-catalog"
 import { builtinViews, type DefinedView } from "nonoha-client-js"
 import { EDITOR_NODE_SPEC_BY_TYPE } from "@/src/editor-nodes/specs"
@@ -922,6 +923,7 @@ function PageInner() {
   const [nodeSearchDialogOpen, setNodeSearchDialogOpen] = useState(false)
   const [dataBrowserOpen, setDataBrowserOpen] = useState(false)
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [envSettingsOpen, setEnvSettingsOpen] = useState(false)
 
   useEffect(() => {
     if (!engineGatewayState.initialized) {
@@ -2270,6 +2272,11 @@ function PageInner() {
             onOpen={() => setAboutOpen(true)}
             onClose={() => setAboutOpen(false)}
           />
+          <EnvSettingsDialog
+            open={envSettingsOpen}
+            onClose={() => setEnvSettingsOpen(false)}
+            engineGatewayUrl={connectedEngineUrl}
+          />
           <InspectorStatusButton />
           <IconButton
             title="Refresh graph"
@@ -2346,6 +2353,13 @@ function PageInner() {
             >
               Engine Gateway Settings
             </MenuItem>
+            <EnvSettingsMenuItem
+              engineGatewayUrl={connectedEngineUrl}
+              onClick={() => {
+                setEnvSettingsOpen(true)
+                setSettingsMenuAnchorEl(null)
+              }}
+            />
             <MenuItem
               onClick={() => {
                 setAboutOpen(true)

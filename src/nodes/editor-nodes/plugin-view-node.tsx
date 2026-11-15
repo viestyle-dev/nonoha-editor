@@ -1,7 +1,15 @@
 "use client"
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { Node, NodeProps, NodeResizeControl, ResizeDragEvent, ResizeParams, useReactFlow } from "@xyflow/react"
+import {
+  Node,
+  NodeProps,
+  NodeResizeControl,
+  ResizeDragEvent,
+  ResizeParams,
+  useReactFlow,
+  useUpdateNodeInternals,
+} from "@xyflow/react"
 import {
   Divider,
   FormControl,
@@ -199,6 +207,14 @@ export const PluginViewNode = memo((props: NodeProps<PluginViewNode>) => {
       element.replaceChildren()
     }
   }, [definition])
+
+  // Input handles come from the view's manifest, which loads after the node
+  // first renders: have React Flow measure them again so edges can attach.
+  const updateNodeInternals = useUpdateNodeInternals()
+  const inputsKey = (entry?.inputs ?? []).map(input => input.name).join("|")
+  useEffect(() => {
+    updateNodeInternals(props.id)
+  }, [inputsKey, props.id, updateNodeInternals])
 
   useEffect(() => hostRef.current?.setTheme(viewTheme), [viewTheme])
   useEffect(() => hostRef.current?.setSettings(settings ?? {}), [settings])

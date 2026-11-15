@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react"
 import { EngineCapabilities, fetchEngineCapabilities } from "nonoha-client-js"
 
 import { AboutDialog, EngineInfo } from "@/src/components/about-dialog"
-import { checkEngineCompat, describeCompat, isCompatWarning } from "@/src/lib/engine-compat"
+import { describeCompat, engineCompatStatus, isCompatWarning } from "@/src/lib/engine-compat"
 import { useInspector, useInspectorState } from "@/src/inspector/inspector-store"
 
 /**
@@ -41,7 +41,7 @@ export function useEngineInfo(engineGatewayUrl: string | undefined): EngineInfo 
     return {
       url: engineGatewayUrl,
       version,
-      compat: engineGatewayUrl ? checkEngineCompat(version, own.status) : "loading",
+      compat: engineGatewayUrl ? engineCompatStatus(version, own.status) : "loading",
       inspector: own.caps ? (own.caps.inspector?.enabled ? "available" : "off in this engine") : undefined,
     }
   }
@@ -49,7 +49,7 @@ export function useEngineInfo(engineGatewayUrl: string | undefined): EngineInfo 
   return {
     url: engineGatewayUrl,
     version: engineVersion,
-    compat: checkEngineCompat(engineVersion, capabilities),
+    compat: engineCompatStatus(engineVersion, capabilities),
     inspector:
       capabilities !== "ok"
         ? undefined

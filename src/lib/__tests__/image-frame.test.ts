@@ -144,7 +144,7 @@ describe("convertToRgba", () => {
   // 2 pixels: (10, 20, 30) and (40, 50, 60).
   const rgb = new Uint8Array([10, 20, 30, 40, 50, 60])
 
-  // Runs a conversion through both the 32-bit and the byte path and checks
+  // Runs a conversion through both the 32-bit and the byte path and asserts
   // they agree.
   function both(
     src: Uint8Array,

@@ -12,7 +12,7 @@
 //
 // Hot-path friendly: planImageFrame() writes into a caller-owned plan object
 // and convertToRgba() into a caller-owned buffer, so steady-state streaming
-// allocates nothing. Port values are type-checked when ports connect, so only
+// allocates nothing. Port types are matched when ports connect, so only
 // what is needed to pick a code path is inspected here.
 
 // Saved decodeFormat values. "rgba" and "jpeg" are the names older graphs

@@ -2,7 +2,7 @@
 
 import { css } from "@emotion/react"
 import { IconButton, ListItemIcon, Menu, MenuItem, Tooltip, Typography } from "@mui/material"
-import { Check, Visibility, VisibilityOutlined } from "@mui/icons-material"
+import { Done, Visibility, VisibilityOutlined } from "@mui/icons-material"
 import { memo, useEffect, useMemo, useRef, useState } from "react"
 import type { InspectorPortRef } from "nonoha-client-js"
 
@@ -47,7 +47,7 @@ export function NodePreviewToggle({
               setAnchor(null)
             }}
           >
-            <ListItemIcon>{port === preview ? <Check fontSize="small" /> : null}</ListItemIcon>
+            <ListItemIcon>{port === preview ? <Done fontSize="small" /> : null}</ListItemIcon>
             {port}
           </MenuItem>
         ))}

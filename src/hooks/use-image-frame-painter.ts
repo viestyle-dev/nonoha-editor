@@ -235,7 +235,7 @@ export function useImageFramePainter(
 
   const accept = useCallback(
     (value: PortValue | undefined) => {
-      // Ports are type-checked on connect; this only narrows the array type.
+      // Port types are matched on connect; this only narrows the array type.
       if (!value || value.dataType !== PortDataType.Uint8) {
         setError("Unsupported data type (expected u8)")
         return

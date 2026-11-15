@@ -69,6 +69,8 @@ export interface InspectorUiState {
   capabilities: "loading" | "none" | "error" | "ok"
   /** Plugin static files (views) are served by the engine. */
   pluginStatic: boolean
+  /** The engine accepts environment values (API keys) from the editor. */
+  envSettings: boolean
 }
 
 export interface EdgeEndpoints {
@@ -117,6 +119,7 @@ export class EditorInspector {
       engineVersion: undefined,
       capabilities: "loading",
       pluginStatic: false,
+      envSettings: false,
     }
   }
 
@@ -130,6 +133,7 @@ export class EditorInspector {
           engineVersion: capabilities?.engine,
           capabilities: capabilities ? "ok" : "none",
           pluginStatic: Boolean(capabilities?.plugin_static),
+          envSettings: Boolean(capabilities?.env_settings),
         })
         if (this.state.enabled) this.connect()
       })
@@ -323,6 +327,7 @@ const NO_STATE: InspectorUiState = {
   engineVersion: undefined,
   capabilities: "loading",
   pluginStatic: false,
+  envSettings: false,
 }
 const noopSubscribe = () => () => {}
 

@@ -193,7 +193,7 @@ describe("HeatmapRaster.computeMinMax / clear / configure", () => {
 })
 
 describe("HeatmapRaster incremental bookkeeping", () => {
-  // Brute-force min/max over valueAt() for cross-checking.
+  // Brute-force min/max over valueAt() as the reference.
   function bruteMinMax(raster: HeatmapRaster) {
     let min = Infinity
     let max = -Infinity
