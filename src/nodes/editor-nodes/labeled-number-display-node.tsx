@@ -5,8 +5,6 @@ import {
   Node,
   NodeProps,
   useReactFlow,
-  useHandleConnections,
-  useNodesData,
 } from "@xyflow/react"
 import {
   Button,
@@ -19,16 +17,15 @@ import {
 import { css } from "@emotion/react"
 import {
   GraphEndpoint,
-  PortData,
   PortDataType,
   PortValue,
 } from "nonoha-client-js"
+import { LATEST_WATCH, useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { NodeHandleLeft } from "@/src/components/node-handle"
-import { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
 import { ExpandLess, ExpandMore } from "@mui/icons-material"
 import { enqueueSnackbar } from "notistack"
 
@@ -45,13 +42,6 @@ const LabelDisplay = memo(
 
     const refMapper = useRef(mapper)
     refMapper.current = mapper
-
-    // ---
-    const valuesConns = useHandleConnections({ type: "target", id: "values" })
-    const valuesSourceData = useNodesData<BasicPortNode>(valuesConns[0]?.source)
-    const valuesSourceDataRef = useRef(valuesSourceData)
-    valuesSourceDataRef.current = valuesSourceData
-    // ---
 
     const [errorMessage, setErrorMessage] = useState<string | undefined>(
       undefined
@@ -105,13 +95,26 @@ const LabelDisplay = memo(
       updateLabel(refCurrentPortValues.current)
     }, [mapper, targetIndex])
 
+    // Solid edge ($output port) or dashed edge (engine node: latest value
+    // sampled by the inspector).
+    const valuesSource = useEditorInput(
+      graphEndpoint,
+      "values",
+      (values: PortValue[]) => {
+        refCurrentPortValues.current = values
+        updateLabel(values)
+      },
+      LATEST_WATCH
+    )
+    const valuesPort =
+      valuesSource.kind === "output" ? valuesSource.portName : undefined
+
     useEffect(() => {
-      const portName = valuesSourceData?.data.port.name
-      if (!graphEndpoint || !portName) {
+      if (!graphEndpoint || !valuesPort) {
         return
       }
 
-      graphEndpoint.fetchOutputValues(portName)
+      graphEndpoint.fetchOutputValues(valuesPort)
         .then(values => {
           refCurrentPortValues.current = values
           updateLabel(values)
@@ -119,27 +122,7 @@ const LabelDisplay = memo(
         .catch(error => {
           console.error(error)
         })
-    }, [valuesSourceData, graphEndpoint])
-
-    useEffect(() => {
-      if (!graphEndpoint) {
-        return
-      }
-
-      const onOutputCallback = (output: PortData) => {
-        if (valuesSourceDataRef.current?.data.port.name !== output.portName) {
-          return
-        }
-        refCurrentPortValues.current = output.values
-        updateLabel(output.values)
-      }
-
-      graphEndpoint.addOutputCallback(onOutputCallback)
-
-      return () => {
-        graphEndpoint.removeOutputCallback(onOutputCallback)
-      }
-    }, [graphEndpoint])
+    }, [valuesPort, graphEndpoint])
 
     return (
       <Typography

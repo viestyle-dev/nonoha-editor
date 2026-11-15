@@ -20,6 +20,13 @@ This directory contains technical documentation for the nonoha-engine editor, fo
 - Complete copy/paste implementation
 - Error handling and performance optimization
 
+### [Monitoring and Views](./monitoring.md)
+**Inspector features, display-node inputs, editor-node specs and plugin views**
+- Port activity, peek, pin, in-node preview, status, About/compatibility
+- `useEditorInput`: solid (`$output`) and dashed (inspector) connections
+- `public/editor-nodes.json` as the single source for editor nodes
+- View catalog and `PluginViewNode`
+
 ### [Troubleshooting Guide](./troubleshooting.md)
 **Solutions for common issues and debugging techniques**
 - Copy/paste edge visibility problems

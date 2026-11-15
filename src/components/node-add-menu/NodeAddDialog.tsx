@@ -298,9 +298,11 @@ export function NodeAddDialog({
 
     // Editor nodes
     for (const proto of nodePrototypes) {
-      const meta = EDITOR_NODE_CATALOG[proto.type]
+      const meta = proto.catalog
+        ? { ...proto.catalog, outputs: [] as { name: string; types: string[]; description: string }[] }
+        : EDITOR_NODE_CATALOG[proto.type]
       result.push({
-        key: `editor:${proto.type}`,
+        key: `editor:${proto.catalog?.key ?? proto.type}`,
         label: meta?.label ?? proto.data.label,
         category: meta?.category ?? "Editor",
         description: meta?.description ?? "",
@@ -417,7 +419,8 @@ export function NodeAddDialog({
             id: uniqueId,
             data: {
               ...entry.prototype.data,
-              label: uniqueId,
+              // Views keep their title; other editor nodes are named by id.
+              label: entry.prototype.catalog ? entry.prototype.data.label : uniqueId,
             },
             position: screenToFlowPosition({ x: 100, y: 100 }),
             dragHandle: ".drag-handle",

@@ -4,17 +4,15 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Node,
   NodeProps,
-  useHandleConnections,
-  useNodesData,
   useReactFlow,
 } from "@xyflow/react"
 import { css } from "@emotion/react"
 import {
   GraphEndpoint,
-  PortData,
   PortDataType,
   PortValue,
 } from "nonoha-client-js"
+import { SNAPSHOT_WATCH, useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { useThemeStore } from "@/src/stores/theme-store"
 import {
@@ -32,7 +30,6 @@ import {
 import { NodeHandleLeft } from "@/src/components/node-handle"
 import dynamic from "next/dynamic"
 import { HeatmapPlotData } from "@/src/components/heatmap-graph"
-import { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
 import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { ExpandLess, ExpandMore } from "@mui/icons-material"
@@ -81,25 +78,6 @@ const GraphWrapper = memo(
 
     const xLengthRef = useRef(xLength)
     xLengthRef.current = xLength
-
-    // ---
-    const seriesConns = useHandleConnections({ type: "target", id: "series" })
-    const seriesSourcesData = useNodesData<BasicPortNode>(
-      seriesConns[0]?.source
-    )
-    const seriesSourcesDataRef = useRef(seriesSourcesData)
-    seriesSourcesDataRef.current = seriesSourcesData
-    // ---
-    const yLabelsConns = useHandleConnections({
-      type: "target",
-      id: "yLabels",
-    })
-    const yLabelsSourcesData = useNodesData<BasicPortNode>(
-      yLabelsConns[0]?.source
-    )
-    const yLabelsSourcesDataRef = useRef(yLabelsSourcesData)
-    yLabelsSourcesDataRef.current = yLabelsSourcesData
-    // ---
 
     const plotZRef = useRef<number[][]>([])
     const yLabelsRef = useRef<Float32Array | undefined>()
@@ -223,44 +201,26 @@ const GraphWrapper = memo(
       yLabelsRef.current = yLabels
     }, [])
 
+    // Solid edges ($output ports) or dashed edges (engine node outputs via
+    // the inspector: series rows since the last sample, latest y labels).
+    useEditorInput(graphEndpoint, "series", onSeriesCallback)
+    const yLabelsSource = useEditorInput(graphEndpoint, "yLabels", onYLabelsCallback, SNAPSHOT_WATCH)
+    const yLabelsPort = yLabelsSource.kind === "output" ? yLabelsSource.portName : undefined
+
+    // y labels rarely change: fetch the current value once via REST
     useEffect(() => {
-      const portName = yLabelsSourcesData?.data?.port.name
-      if (!graphEndpoint || !portName) {
+      if (!graphEndpoint || !yLabelsPort) {
         return
       }
 
-      graphEndpoint.fetchOutputValues(portName)
+      graphEndpoint.fetchOutputValues(yLabelsPort)
         .then(values => {
           onYLabelsCallback(values)
         })
         .catch(error => {
           console.error(error)
         })
-    }, [graphEndpoint, yLabelsSourcesData, onYLabelsCallback])
-
-    useEffect(() => {
-      if (!graphEndpoint) {
-        return
-      }
-
-      const onOutputCallback = (portData: PortData) => {
-        if (
-          seriesSourcesDataRef.current?.data.port.name === portData.portName
-        ) {
-          onSeriesCallback(portData.values)
-        } else if (
-          yLabelsSourcesDataRef.current?.data.port.name === portData.portName
-        ) {
-          onYLabelsCallback(portData.values)
-        }
-      }
-
-      graphEndpoint.addOutputCallback(onOutputCallback)
-
-      return () => {
-        graphEndpoint.removeOutputCallback(onOutputCallback)
-      }
-    }, [graphEndpoint, onSeriesCallback, onYLabelsCallback])
+    }, [graphEndpoint, yLabelsPort, onYLabelsCallback])
 
     return (
       <div style={{ width: graphWidth, height: graphHeight }}>

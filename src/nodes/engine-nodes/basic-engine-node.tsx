@@ -15,6 +15,8 @@ import { css } from "@emotion/react"
 
 import { NodeHandleLeft } from "@/src/components/node-handle"
 import { ActivityOutputHandle } from "@/src/inspector/activity-output-handle"
+import { NodePreview, NodePreviewToggle } from "@/src/inspector/node-preview"
+import { useGraphSessionStore } from "@/src/stores/graph-session-store"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { hexFromArgb } from "@material/material-color-utilities"
 import {
@@ -66,6 +68,8 @@ export type BasicEngineNode = Node<{
     property_groups?: { keys: string[]; dispatch_flags: boolean[] }[]
   }
   graphEndpoint: GraphEndpoint
+  /** Output shown inside the node (settings.json nodes.<name>.preview). */
+  preview?: string
 }>
 
 /**
@@ -167,6 +171,22 @@ export const BasicEngineNode = memo((props: NodeProps<BasicEngineNode>) => {
   const [flowColorsState] = useNodeFlowColorsStore()
   const catalogState = useNodeCatalog()
   const catalogEntry = catalogState.entries.get(props.data.nodeData.type)
+
+  // In-node preview of one output, persisted in settings.json.
+  const [{ editorModelUpdater }] = useGraphSessionStore()
+  const outputNames = useMemo(
+    () => props.data.nodeData.outputs.map(output => output.name),
+    [props.data.nodeData.outputs],
+  )
+  const setPreview = useCallback(
+    (port: string | undefined) => {
+      setNodes(nodes =>
+        nodes.map(node => (node.id === props.id ? { ...node, data: { ...node.data, preview: port } } : node)),
+      )
+      editorModelUpdater?.setNodePreview(props.id, port ?? null)
+    },
+    [props.id, setNodes, editorModelUpdater],
+  )
 
   // Property editing state tracking
   const [isDirty, setIsDirty] = useState(false)
@@ -691,7 +711,9 @@ export const BasicEngineNode = memo((props: NodeProps<BasicEngineNode>) => {
         outline: props.selected ? `1px solid ${colors.tertiary}` : "none",
       }}
     >
-      <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />
+      <BasicNodeToolbar nodeId={props.id} isVisible={props.selected}>
+        <NodePreviewToggle outputs={outputNames} preview={props.data.preview} onChange={setPreview} />
+      </BasicNodeToolbar>
       {/* Status badge outside the node */}
       {(isDirty || validationError) && (
         <div
@@ -901,6 +923,7 @@ export const BasicEngineNode = memo((props: NodeProps<BasicEngineNode>) => {
           )}
         </div>
       )}
+      {props.data.preview && <NodePreview nodeId={props.id} port={props.data.preview} />}
     </Paper>
   )
 })

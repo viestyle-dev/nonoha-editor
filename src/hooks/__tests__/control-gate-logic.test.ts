@@ -6,6 +6,7 @@ import {
   controlSignalTypeError,
   lastTruthyOfValues,
   RisingEdgeGate,
+  updateGateWithRows,
 } from "@/src/hooks/control-gate-logic"
 
 function boolValues(...batch: number[]): PortValue[] {
@@ -103,6 +104,49 @@ describe("RisingEdgeGate", () => {
     gate.update(false)
     gate.reset()
     expect(gate.update(true)).toBe(false) // first observation after reset is record-only
+  })
+})
+
+describe("updateGateWithRows", () => {
+  it("fires on a pulse shorter than the sampling interval", () => {
+    const gate = new RisingEdgeGate()
+    expect(updateGateWithRows(gate, boolValues(0))).toBe(false)
+    // One inspector sample holding every row since the previous one.
+    expect(updateGateWithRows(gate, boolValues(0, 1, 0))).toBe(true)
+    expect(gate.update(false)).toBe(false) // the gate ended on the last row
+    expect(gate.update(true)).toBe(true)
+  })
+
+  it("keeps the first observation record-only", () => {
+    const gate = new RisingEdgeGate()
+    expect(updateGateWithRows(gate, boolValues(1, 1))).toBe(false)
+    expect(updateGateWithRows(gate, boolValues(1, 0, 1))).toBe(true)
+  })
+
+  it("uses the last element of each row for vector signals", () => {
+    const gate = new RisingEdgeGate()
+    const values = [
+      {
+        dataType: 0, // Bool
+        shape: [3, 2],
+        array: new Uint8Array([1, 0, 0, 1, 1, 1]),
+      } as unknown as PortValue,
+    ]
+    // Rows end with 0, 1, 1: one rising edge.
+    expect(updateGateWithRows(gate, values)).toBe(true)
+    expect(gate.update(true)).toBe(false)
+  })
+
+  it("ignores empty, missing and string values", () => {
+    const gate = new RisingEdgeGate()
+    expect(updateGateWithRows(gate, undefined)).toBe(false)
+    expect(updateGateWithRows(gate, [])).toBe(false)
+    expect(updateGateWithRows(gate, boolValues())).toBe(false)
+    const strings = [
+      { dataType: 13, shape: [2], array: ["a", "b"] } as unknown as PortValue,
+    ]
+    expect(updateGateWithRows(gate, strings)).toBe(false)
+    expect(gate.update(true)).toBe(false) // still unobserved
   })
 })
 

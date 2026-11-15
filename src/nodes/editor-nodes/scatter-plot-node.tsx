@@ -1,11 +1,9 @@
 "use client"
 
-import { memo, useEffect, useMemo, useRef, useState } from "react"
+import { memo, useMemo, useRef, useState } from "react"
 import {
   Node,
   NodeProps,
-  useHandleConnections,
-  useNodesData,
 } from "@xyflow/react"
 import {
   Button,
@@ -24,11 +22,11 @@ import { enqueueSnackbar } from "notistack"
 import { NodeHandleLeft } from "@/src/components/node-handle"
 import {
   GraphEndpoint,
-  PortData,
   PortDataType,
+  PortValue,
 } from "nonoha-client-js"
+import { useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
-import { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
 import { TimeSeriesPlotData } from "@/src/components/time-series-graph"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { EditableTypography } from "@/src/components/editable-typography"
@@ -54,14 +52,8 @@ const PlotWrapper = memo(
     const refRecording = useRef(recording)
     refRecording.current = recording
 
-    // ---
-    const seriesConns = useHandleConnections({ type: "target", id: "series" })
-    const seriesSourcesData = useNodesData<BasicPortNode>(
-      seriesConns[0]?.source
-    )
-    const refSeriesSourcesData = useRef(seriesSourcesData)
-    refSeriesSourcesData.current = seriesSourcesData
-    // ---
+    // Name of the connected port, for error messages.
+    const refSeriesPortName = useRef("")
 
     const [{ colors }] = useThemeStore()
 
@@ -99,17 +91,15 @@ const PlotWrapper = memo(
     const refOpacities = useRef(opacities)
     refOpacities.current = opacities
 
-    useEffect(() => {
-      const onOutputCallback = (output: PortData) => {
+    // Solid edge ($output port: every value) or dashed edge (engine node:
+    // rows since the last inspector sample). Points accumulate into a trail,
+    // so the inspector delivers every row rather than the latest one.
+    const seriesSource = useEditorInput(graphEndpoint, "series", (values: PortValue[]) => {
         if (!refRecording.current) {
           return
         }
 
-        if (refSeriesSourcesData.current?.data.port.name !== output.portName) {
-          return
-        }
-
-        while (refTraces.current.length < output.values.length) {
+        while (refTraces.current.length < values.length) {
           // refTraces.current.push({
           //   x: new Array(maxPointCount),
           //   y: new Array(maxPointCount),
@@ -118,11 +108,11 @@ const PlotWrapper = memo(
         }
         const traces = refTraces.current
 
-        for (let i = 0; i < output.values.length; ++i) {
-          const value = output.values[i]
+        for (let i = 0; i < values.length; ++i) {
+          const value = values[i]
           if (value.shape.length !== 2 && value.shape[1] !== 2) {
             setErrorMessage(
-              `Invalid output shape for ${output.portName}: expected 2D array`
+              `Invalid output shape for ${refSeriesPortName.current}: expected 2D array`
             )
             return
           }
@@ -153,7 +143,7 @@ const PlotWrapper = memo(
               break
             default:
               setErrorMessage(
-                `Unsupported data type for ${output.portName}: ${value.dataType}`
+                `Unsupported data type for ${refSeriesPortName.current}: ${value.dataType}`
               )
               return
           }
@@ -169,13 +159,13 @@ const PlotWrapper = memo(
         })
 
         setErrorMessage(undefined)
-      }
-
-      graphEndpoint.addOutputCallback(onOutputCallback)
-      return () => {
-        graphEndpoint.removeOutputCallback(onOutputCallback)
-      }
-    }, [graphEndpoint])
+    })
+    refSeriesPortName.current =
+      seriesSource.kind === "output"
+        ? seriesSource.portName
+        : seriesSource.kind === "inspector"
+          ? `${seriesSource.ref.node}.${seriesSource.ref.port}`
+          : ""
 
     return (
       <div>

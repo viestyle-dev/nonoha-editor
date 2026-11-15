@@ -76,6 +76,22 @@ export function makeEditorModelUpdater(
         })
     },
 
+    /** Output previewed inside an engine node (null = none). */
+    setNodePreview(nodeName: string, port: string | null) {
+      promiseChain = promiseChain
+        .then(() =>
+          fetch(`${editorModelUrl}?query=nodes.${nodeName}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ preview: port }),
+          })
+        )
+        .then(() => {})
+        .catch(error => {
+          console.log(error)
+        })
+    },
+
     /** Set a display title for an editor node (shown instead of its id). */
     setNodeLabel(nodeName: string, label: string) {
       promiseChain = promiseChain

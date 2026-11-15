@@ -4,24 +4,21 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Node,
   NodeProps,
-  useHandleConnections,
-  useNodesData,
   useReactFlow,
 } from "@xyflow/react"
 import { css } from "@emotion/react"
 import {
   GraphEndpoint,
-  PortData,
   PortDataType,
   PortValue,
 } from "nonoha-client-js"
+import { SNAPSHOT_WATCH, useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { Button, Collapse, Divider, FormControlLabel, Paper, Switch, TextField } from "@mui/material"
 import { NodeHandleLeft } from "@/src/components/node-handle"
 import dynamic from "next/dynamic"
 import { LineChartPlotData } from "@/src/components/line-chart-graph"
-import { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
 import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { ExpandLess, ExpandMore } from "@mui/icons-material"
@@ -63,28 +60,6 @@ const GraphWrapper = memo(
     const refRecording = useRef(recording)
     refRecording.current = recording
 
-    // ---
-    const tracesConns = useHandleConnections({
-      type: "target",
-      id: "traces",
-    })
-    const tracesSourcesData = useNodesData<BasicPortNode>(
-      tracesConns[0]?.source
-    )
-    const refTracesSourcesData = useRef(tracesSourcesData)
-    refTracesSourcesData.current = tracesSourcesData
-    // ---
-    const xLabelsConns = useHandleConnections({
-      type: "target",
-      id: "xLabels",
-    })
-    const xLabelsSourcesData = useNodesData<BasicPortNode>(
-      xLabelsConns[0]?.source
-    )
-    const refXLabelsSourcesData = useRef(xLabelsSourcesData)
-    refXLabelsSourcesData.current = xLabelsSourcesData
-    // ---
-
     const [{ colors }] = useThemeStore()
 
     const [errorMessage, setErrorMessage] = useState<string | undefined>(
@@ -92,7 +67,7 @@ const GraphWrapper = memo(
     )
 
 
-    const onTracesCallback = (values: PortValue[]) => {
+    const onTracesCallback = useCallback((values: PortValue[]) => {
       if (!refRecording.current) {
         return
       }
@@ -127,9 +102,9 @@ const GraphWrapper = memo(
       })
 
       setErrorMessage(undefined)
-    }
+    }, [])
 
-    const onXLabelsCallback = (values: PortValue[]) => {
+    const onXLabelsCallback = useCallback((values: PortValue[]) => {
       const value = values[0]
       if (value.shape.length !== 2) {
         setErrorMessage(
@@ -144,47 +119,27 @@ const GraphWrapper = memo(
 
       const xLabels = value.array.slice(-value.array.length)
       refXLabels.current = xLabels
-    }
+    }, [])
 
+    // Solid edges ($output ports) or dashed edges (engine node outputs via the inspector).
+    useEditorInput(graphEndpoint, "traces", onTracesCallback, SNAPSHOT_WATCH)
+    const xLabelsSource = useEditorInput(graphEndpoint, "xLabels", onXLabelsCallback, SNAPSHOT_WATCH)
+    const xLabelsPort = xLabelsSource.kind === "output" ? xLabelsSource.portName : undefined
+
+    // x labels rarely change: fetch the current value once via REST
     useEffect(() => {
-      const portName = xLabelsSourcesData?.data?.port.name
-      if (!graphEndpoint || !portName) {
+      if (!graphEndpoint || !xLabelsPort) {
         return
       }
 
-      graphEndpoint.fetchOutputValues(portName)
+      graphEndpoint.fetchOutputValues(xLabelsPort)
         .then(values => {
-          // console.log("xLabels", values)
           onXLabelsCallback(values)
         })
         .catch(error => {
           console.error(error)
         })
-    }, [graphEndpoint, xLabelsSourcesData])
-
-    useEffect(() => {
-      if (!graphEndpoint) {
-        return
-      }
-
-      const onOutputCallback = (portData: PortData) => {
-        if (
-          refTracesSourcesData.current?.data.port.name === portData.portName
-        ) {
-          onTracesCallback(portData.values)
-        } else if (
-          refXLabelsSourcesData.current?.data.port.name === portData.portName
-        ) {
-          onXLabelsCallback(portData.values)
-        }
-      }
-
-      graphEndpoint.addOutputCallback(onOutputCallback)
-
-      return () => {
-        graphEndpoint.removeOutputCallback(onOutputCallback)
-      }
-    }, [graphEndpoint])
+    }, [graphEndpoint, xLabelsPort, onXLabelsCallback])
 
     return (
       <div style={{ width: graphWidth, height: graphHeight }}>

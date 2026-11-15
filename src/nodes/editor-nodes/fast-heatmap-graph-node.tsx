@@ -4,8 +4,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Node,
   NodeProps,
-  useHandleConnections,
-  useNodesData,
   useReactFlow,
   useViewport,
 } from "@xyflow/react"
@@ -32,12 +30,11 @@ import { enqueueSnackbar } from "notistack"
 import { NodeHandleLeft } from "@/src/components/node-handle"
 import {
   GraphEndpoint,
-  PortData,
   PortDataType,
   PortValue,
 } from "nonoha-client-js"
+import { SNAPSHOT_WATCH, useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
-import { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
 import { FastHeatmapGraphHandle } from "@/src/components/fast-heatmap-graph"
 import { HeatmapRaster } from "@/src/lib/heatmap-raster"
 import {
@@ -112,25 +109,6 @@ const GraphWrapper = memo(
     zMinRef.current = zMin
     const zMaxRef = useRef(zMax)
     zMaxRef.current = zMax
-
-    // ---
-    const seriesConns = useHandleConnections({ type: "target", id: "series" })
-    const seriesSourcesData = useNodesData<BasicPortNode>(
-      seriesConns[0]?.source
-    )
-    const seriesSourcesDataRef = useRef(seriesSourcesData)
-    seriesSourcesDataRef.current = seriesSourcesData
-    // ---
-    const yLabelsConns = useHandleConnections({
-      type: "target",
-      id: "yLabels",
-    })
-    const yLabelsSourcesData = useNodesData<BasicPortNode>(
-      yLabelsConns[0]?.source
-    )
-    const yLabelsSourcesDataRef = useRef(yLabelsSourcesData)
-    yLabelsSourcesDataRef.current = yLabelsSourcesData
-    // ---
 
     const onErrorRef = useRef(onError)
     onErrorRef.current = onError
@@ -322,47 +300,28 @@ const GraphWrapper = memo(
       })
     }, [])
 
+    // Solid edges ($output ports) or dashed edges (engine node outputs via
+    // the inspector: series rows since the last sample, latest y labels).
+    useEditorInput(graphEndpoint, "series", onSeriesCallback)
+    const yLabelsSource = useEditorInput(graphEndpoint, "yLabels", onYLabelsCallback, SNAPSHOT_WATCH)
+    const yLabelsPort = yLabelsSource.kind === "output" ? yLabelsSource.portName : undefined
+
     // Prime yLabels from the REST snapshot so a chart opened mid-session
     // gets its axis before the next dispatch.
     useEffect(() => {
-      const portName = yLabelsSourcesData?.data?.port.name
-      if (!graphEndpoint || !portName) {
+      if (!graphEndpoint || !yLabelsPort) {
         return
       }
 
       graphEndpoint
-        .fetchOutputValues(portName)
+        .fetchOutputValues(yLabelsPort)
         .then(values => {
           onYLabelsCallback(values)
         })
         .catch(error => {
           console.error(error)
         })
-    }, [graphEndpoint, yLabelsSourcesData, onYLabelsCallback])
-
-    useEffect(() => {
-      if (!graphEndpoint) {
-        return
-      }
-
-      const onOutputCallback = (portData: PortData) => {
-        if (
-          seriesSourcesDataRef.current?.data.port.name === portData.portName
-        ) {
-          onSeriesCallback(portData.values)
-        } else if (
-          yLabelsSourcesDataRef.current?.data.port.name === portData.portName
-        ) {
-          onYLabelsCallback(portData.values)
-        }
-      }
-
-      graphEndpoint.addOutputCallback(onOutputCallback)
-
-      return () => {
-        graphEndpoint.removeOutputCallback(onOutputCallback)
-      }
-    }, [graphEndpoint, onSeriesCallback, onYLabelsCallback])
+    }, [graphEndpoint, yLabelsPort, onYLabelsCallback])
 
     // Clear (manual button or the clear gate).
     const isFirstRevisionRef = useRef(true)

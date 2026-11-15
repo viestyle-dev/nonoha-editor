@@ -24,6 +24,7 @@ import { FastHeatmapGraphNode } from "@/src/nodes/editor-nodes/fast-heatmap-grap
 import { ImageDisplayNode } from "@/src/nodes/editor-nodes/image-display-node"
 import { ValuesLogDisplayNode } from "@/src/nodes/editor-nodes/values-log-display-node"
 import { WaypointNode } from "@/src/nodes/editor-nodes/waypoint-node"
+import { PluginViewNode } from "@/src/nodes/editor-nodes/plugin-view-node"
 
 import { GraphNode } from "@/src/nodes/graph-node"
 import BasicNodeEdge from "@/src/components/basic-node-edge"
@@ -60,6 +61,7 @@ export const NODE_TYPES = {
   ImageDisplayNode,
   ValuesLogDisplayNode,
   WaypointNode,
+  PluginViewNode,
 } as const
 
 /**

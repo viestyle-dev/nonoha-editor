@@ -1,15 +1,18 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { useHandleConnections, useNodesData } from "@xyflow/react"
+import { useNodesData } from "@xyflow/react"
 
-import type { GraphEndpoint, PortData } from "nonoha-client-js"
+import type { GraphEndpoint, PortValue } from "nonoha-client-js"
 
-import { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
+import type { BasicEngineNode } from "@/src/nodes/engine-nodes/basic-engine-node"
+import type { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
+import { EditorInputSource, useEditorInput } from "@/src/hooks/use-editor-input"
 import {
   controlSignalTypeError,
   lastTruthyOfValues,
   RisingEdgeGate,
+  updateGateWithRows,
 } from "./control-gate-logic"
 
 export type ControlGateMode = "auto" | "manual"
@@ -26,9 +29,16 @@ export type ControlGateMode = "auto" | "manual"
 // disconnect or an editor reload. Typical setup: connect meditation_active to
 // both rec and clear -> rising edge = clear plot + start recording / falling
 // edge = stop recording (plot frozen for review). When the same port feeds
-// both handles, a frame is processed in a fixed clear -> rec order (clear
-// first, then start recording). Unconnected handles do nothing (manual
-// operation as before).
+// both handles, the clear edge and the recording change land in the same
+// render (both only enqueue state updates, which React batches), so a session
+// starts with a fresh plot. Unconnected handles do nothing (manual operation
+// as before).
+//
+// A handle is fed by a solid edge ($output port: every value, primed from
+// REST) or a dashed edge (engine node output sampled by the inspector with
+// batch "since": every row since the last sample, so clear edges are not
+// missed; the first sample primes). A dashed edge while the inspector is
+// unavailable carries no signal and counts as unconnected.
 //
 // Control mode (only meaningful while a gate is connected):
 //   AUTO   - the connected signals drive rec/clear (default; reset on reload).
@@ -60,28 +70,16 @@ export function useControlGates({
   // show that a true signal is currently being ignored in MANUAL.
   recSignal: boolean | undefined
 } {
-  // ---
-  const recConns = useHandleConnections({ type: "target", id: "rec" })
-  const recSourceData = useNodesData<BasicPortNode>(recConns[0]?.source)
-  const recPortName = recSourceData?.data.port.name
-  const recPortNameRef = useRef<string | undefined>(undefined)
-  recPortNameRef.current = recPortName
-  // ---
-  const clearConns = useHandleConnections({ type: "target", id: "clear" })
-  const clearSourceData = useNodesData<BasicPortNode>(clearConns[0]?.source)
-  const clearPortName = clearSourceData?.data.port.name
-  const clearPortNameRef = useRef<string | undefined>(undefined)
-  clearPortNameRef.current = clearPortName
-  // ---
-
   const onRecChangeRef = useRef(onRecChange)
   onRecChangeRef.current = onRecChange
   const onClearRef = useRef(onClear)
   onClearRef.current = onClear
 
   const clearGateRef = useRef(new RisingEdgeGate())
-  // Once any WS frame has been processed, a late-arriving REST snapshot
-  // (older value) must not overwrite the recording state.
+  // Inspector samples hold several rows: every row is fed to the clear gate.
+  const clearAllRowsRef = useRef(false)
+  // Once any frame has been processed, a late-arriving REST snapshot (older
+  // value) must not overwrite the recording state.
   const recSeenRef = useRef(false)
 
   const [mode, setMode] = useState<ControlGateMode>("auto")
@@ -93,42 +91,36 @@ export function useControlGates({
   const lastRecValueRef = useRef<boolean | undefined>(undefined)
   const [recSignal, setRecSignal] = useState<boolean | undefined>(undefined)
 
-  // WS subscription: one callback handles both handles (fixed clear -> rec order).
-  useEffect(() => {
-    if (!graphEndpoint) {
-      return
+  // --- clear
+  const clearSource = useEditorInput(graphEndpoint, "clear", (values: PortValue[]) => {
+    // Always update the gate: edges seen in MANUAL are consumed and must not
+    // fire retroactively when returning to AUTO.
+    const fired = clearAllRowsRef.current
+      ? updateGateWithRows(clearGateRef.current, values)
+      : clearGateRef.current.update(lastTruthyOfValues(values))
+    if (fired && modeRef.current === "auto") {
+      onClearRef.current?.()
     }
-    const onOutputCallback = (output: PortData) => {
-      if (clearPortNameRef.current === output.portName) {
-        const value = lastTruthyOfValues(output.values)
-        if (value !== undefined) {
-          // Always update the gate: edges seen in MANUAL are consumed and
-          // must not fire retroactively when returning to AUTO.
-          const fired = clearGateRef.current.update(value)
-          if (fired && modeRef.current === "auto") {
-            onClearRef.current?.()
-          }
-        }
-      }
-      if (recPortNameRef.current === output.portName) {
-        const value = lastTruthyOfValues(output.values)
-        if (value !== undefined) {
-          recSeenRef.current = true
-          lastRecValueRef.current = value
-          setRecSignal(value)
-          if (modeRef.current === "auto") {
-            onRecChangeRef.current?.(value)
-          }
-        }
+  })
+  clearAllRowsRef.current = clearSource.kind === "inspector"
+
+  // --- rec
+  const recSource = useEditorInput(graphEndpoint, "rec", (values: PortValue[]) => {
+    const value = lastTruthyOfValues(values)
+    if (value !== undefined) {
+      recSeenRef.current = true
+      lastRecValueRef.current = value
+      setRecSignal(value)
+      if (modeRef.current === "auto") {
+        onRecChangeRef.current?.(value)
       }
     }
+  })
 
-    graphEndpoint.addOutputCallback(onOutputCallback)
-
-    return () => {
-      graphEndpoint.removeOutputCallback(onOutputCallback)
-    }
-  }, [graphEndpoint])
+  const recPortName = recSource.kind === "output" ? recSource.portName : undefined
+  const recInspected = inspectedKey(recSource)
+  const clearPortName = clearSource.kind === "output" ? clearSource.portName : undefined
+  const clearInspected = inspectedKey(clearSource)
 
   // MANUAL -> AUTO: re-sync recording to the latest tracked signal value
   // (idempotent). Clear edges consumed during MANUAL are intentionally not
@@ -147,7 +139,8 @@ export function useControlGates({
   }, [mode])
 
   // rec initial prime: sync to the current value on connect, so opening the
-  // editor mid-window immediately shows the correct recording state.
+  // editor mid-window immediately shows the correct recording state (a dashed
+  // edge is primed by its first inspector sample instead).
   useEffect(() => {
     recSeenRef.current = false
     // The tracked value belongs to the previous source - drop it so a stale
@@ -177,10 +170,11 @@ export function useControlGates({
     return () => {
       cancelled = true
     }
-  }, [graphEndpoint, recPortName])
+  }, [graphEndpoint, recPortName, recInspected])
 
   // clear initial prime: only records the current value, never fires
-  // (opening the editor mid-window must not clear the plot).
+  // (opening the editor mid-window must not clear the plot). A dashed edge
+  // needs no prime: the gate's first observation never fires.
   useEffect(() => {
     clearGateRef.current.reset()
     if (!graphEndpoint || !clearPortName) {
@@ -199,37 +193,67 @@ export function useControlGates({
     return () => {
       cancelled = true
     }
-  }, [graphEndpoint, clearPortName])
+  }, [graphEndpoint, clearPortName, clearInspected])
+
+  const recConnected = recPortName !== undefined || recInspected !== undefined
+  const clearConnected =
+    clearPortName !== undefined || clearInspected !== undefined
 
   // With no gate connected the toggle is hidden and the node is always
   // manual; reset so a later reconnect starts in AUTO again.
-  const anyGateConnected =
-    recPortName !== undefined || clearPortName !== undefined
+  const anyGateConnected = recConnected || clearConnected
   useEffect(() => {
     if (!anyGateConnected) {
       setMode("auto")
     }
   }, [anyGateConnected])
 
-  const recType =
-    recPortName !== undefined
-      ? recSourceData?.data.port.values?.[0]?.type
-      : undefined
-  const clearType =
-    clearPortName !== undefined
-      ? clearSourceData?.data.port.values?.[0]?.type
-      : undefined
+  const recType = useSourceValueType(recSource)
+  const clearType = useSourceValueType(clearSource)
   const gateErrors = [
     controlSignalTypeError("rec", recType),
     controlSignalTypeError("clear", clearType),
   ].filter((e): e is string => e !== undefined)
 
   return {
-    recConnected: recPortName !== undefined,
-    clearConnected: clearPortName !== undefined,
+    recConnected,
+    clearConnected,
     gateError: gateErrors.length > 0 ? gateErrors.join("\n") : undefined,
     mode,
     setMode,
     recSignal,
   }
+}
+
+// Identifies a live dashed-edge source (undefined otherwise, including while
+// the inspector is unavailable and no signal can arrive).
+function inspectedKey(source: EditorInputSource): string | undefined {
+  return source.kind === "inspector" && source.available
+    ? `${source.ref.node}.${source.ref.port}`
+    : undefined
+}
+
+// Declared type ("bool", "f32[5]", ...) of the first value of the port that
+// feeds a handle: from the $output port node for a solid edge, from the
+// engine node's output for a dashed edge.
+function useSourceValueType(source: EditorInputSource): string | undefined {
+  const nodeId =
+    source.kind === "output"
+      ? `$output:${source.portName}`
+      : source.kind === "inspector"
+        ? source.ref.node
+        : ""
+  const node = useNodesData(nodeId)
+  if (!node) {
+    return undefined
+  }
+  if (source.kind === "output") {
+    return (node.data as BasicPortNode["data"]).port?.values?.[0]?.type
+  }
+  if (source.kind === "inspector") {
+    const outputs = (node.data as BasicEngineNode["data"]).nodeData?.outputs
+    const output = outputs?.find(o => o.name === source.ref.port)
+    return output?.values?.[0]?.type
+  }
+  return undefined
 }

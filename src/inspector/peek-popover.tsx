@@ -34,11 +34,11 @@ const KIND_LABELS: Record<ValueKind, string> = {
 /** Kinds that have a display node to pin to. */
 export const PINNABLE: ReadonlySet<ValueKind> = new Set<ValueKind>(["image", "bytes", "scalar", "vector"])
 
-function colorOrderKey(graph: string, ref: InspectorPortRef) {
+export function colorOrderKey(graph: string, ref: InspectorPortRef) {
   return `nonoha-editor:color-order:${graph}:${ref.node}.${ref.dir}.${ref.port}`
 }
 
-function readColorOrder(key: string): ColorOrder {
+export function readColorOrder(key: string): ColorOrder {
   try {
     return localStorage.getItem(key) === "bgr" ? "bgr" : "rgb"
   } catch {

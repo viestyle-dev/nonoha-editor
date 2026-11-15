@@ -84,3 +84,5 @@ const DEFAULT_WATCH: WatchOptions = { intervalMs: 100, batch: "since", maxBytes:
 export const IMAGE_WATCH: WatchOptions = { intervalMs: 66, batch: "last", maxBytes: 1024 * 1024, autoStride: [0, 1] }
 /** Options for array snapshots (spectra, feature vectors): latest row. */
 export const SNAPSHOT_WATCH: WatchOptions = { intervalMs: 100, batch: "last", maxBytes: 256 * 1024, autoStride: [0] }
+/** Options for latest-value readouts (numbers, bytes, colors): latest row, never strided. */
+export const LATEST_WATCH: WatchOptions = { intervalMs: 100, batch: "last" }

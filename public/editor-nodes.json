@@ -322,6 +322,18 @@
       }
     },
     {
+      "type": "PluginViewNode",
+      "label": "View",
+      "category": "Views",
+      "description": "Hosts a view: a plugin's static/views module or a built-in view. Its input handles are the view's inputs (see the plugin's static/views/manifest.json; `nonoha ws catalog` lists them). data.settings holds the view's settings object.",
+      "inputs": [],
+      "outputs": [],
+      "size": { "width": 420, "height": 320 },
+      "settings": {
+        "view": { "type": "string", "description": "<plugin id>/<view id> (e.g. cv_nodes/flow-overlay) or builtin/<view id>" }
+      }
+    },
+    {
       "type": "CommentNode",
       "label": "Comment",
       "category": "Utility",

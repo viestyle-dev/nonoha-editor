@@ -68,6 +68,8 @@ import {
   NodeRegistry,
 } from "@/src/stores/node-flow-store"
 import NodeAddMenu, { NodePrototype } from "@/src/components/node-add-menu"
+import { PortAddDialog } from "@/src/components/node-add-menu/index"
+import type { BasicEngineNode } from "@/src/nodes/engine-nodes/basic-engine-node"
 import { NodeCatalogProvider } from "@/src/stores/node-catalog-store"
 import {
   generateEditorNodeId,
@@ -114,15 +116,64 @@ import {
   InspectorProvider,
   useInspector,
   useInspectorState,
+  type EdgeEndpoints,
   type PinRequest,
 } from "@/src/inspector/inspector-store"
 import { InspectorStatusButton } from "@/src/inspector/inspector-status-button"
+import { EngineAboutControls } from "@/src/components/engine-about"
+import { ViewCatalogProvider, useViewCatalog } from "@/src/views/view-catalog"
+import { builtinViews, type DefinedView } from "nonoha-client-js"
 import { EDITOR_NODE_SPEC_BY_TYPE } from "@/src/editor-nodes/specs"
 import { findFreeSpot, rectsOverlap, type Rect } from "@/src/lib/graph/free-spot"
 import type { ValueKind } from "nonoha-client-js"
 
 const GRAPH_EDIT_DISABLED =
   process.env.NEXT_PUBLIC_GRAPH_EDIT_DISABLED == "true"
+
+/** Built-in views of nonoha-client-js ("builtin/<id>" in the view catalog). */
+const BUILTIN_VIEWS: readonly DefinedView[] = builtinViews
+
+/** Add-menu entries for the views in the catalog (one PluginViewNode prototype each). */
+function ViewPrototypesBridge({
+  graphEndpoint,
+  editorModelUpdater,
+  onChange,
+  catalogRef,
+}: {
+  graphEndpoint: GraphEndpoint | undefined
+  editorModelUpdater: EditorModelUpdater | undefined
+  onChange: (prototypes: NodePrototype[]) => void
+  catalogRef: { current: Map<string, { title: string; size?: { width: number; height: number } }> }
+}) {
+  const catalog = useViewCatalog()
+  catalogRef.current = catalog.entries
+  useEffect(() => {
+    if (!graphEndpoint || !editorModelUpdater) return
+    const prototypes: NodePrototype[] = []
+    catalog.entries.forEach(entry => {
+      prototypes.push({
+        id: "$editor:PluginViewNode",
+        type: "PluginViewNode",
+        data: {
+          label: entry.title,
+          nodeData: { view: entry.key, settings: {} },
+          graphEndpoint,
+          editorModelUpdater,
+        } as NodePrototype["data"],
+        style: entry.size ?? { width: 420, height: 320 },
+        catalog: {
+          key: `view:${entry.key}`,
+          label: entry.title,
+          category: "Views",
+          description: `${entry.description}${entry.source === "plugin" ? ` (${entry.pluginId})` : " (built-in)"}`,
+          inputs: entry.inputs.map(i => ({ name: i.name, types: i.accepts, description: i.description ?? "" })),
+        },
+      })
+    })
+    onChange(prototypes)
+  }, [catalog, graphEndpoint, editorModelUpdater, onChange])
+  return null
+}
 
 /** Display node (and its input handle) created when a peeked port is pinned. */
 const PIN_TARGETS: Partial<Record<ValueKind, { type: string; handle: string }>> = {
@@ -139,9 +190,11 @@ const PIN_TARGETS: Partial<Record<ValueKind, { type: string; handle: string }>> 
  */
 function InspectorBridge({
   onPin,
+  onPromote,
   availableRef,
 }: {
   onPin: (request: PinRequest) => void
+  onPromote: (edge: EdgeEndpoints) => void
   availableRef: { current: boolean }
 }) {
   const inspector = useInspector()
@@ -150,10 +203,12 @@ function InspectorBridge({
   useEffect(() => {
     if (!inspector) return
     inspector.pinHandler = onPin
+    inspector.promoteHandler = onPromote
     return () => {
       if (inspector.pinHandler === onPin) inspector.pinHandler = null
+      if (inspector.promoteHandler === onPromote) inspector.promoteHandler = null
     }
-  }, [inspector, onPin])
+  }, [inspector, onPin, onPromote])
   return null
 }
 
@@ -199,6 +254,11 @@ function PageInner() {
   const [, graphSessionActions] = useGraphSessionStore()
 
   const [nodePrototypes, setNodePrototypes] = useState<NodePrototype[]>([])
+  const [viewPrototypes, setViewPrototypes] = useState<NodePrototype[]>([])
+  const allNodePrototypes = useMemo(
+    () => (viewPrototypes.length ? nodePrototypes.concat(viewPrototypes) : nodePrototypes),
+    [nodePrototypes, viewPrototypes],
+  )
 
   const engineGatewayUrlRef = useRef<string | undefined>()
   const [connectedEngineUrl, setConnectedEngineUrl] = useState<
@@ -218,6 +278,8 @@ function PageInner() {
     sourceHandleId: string | null
     sourceHandleType: "source" | "target"
   } | null>(null)
+  const edgeDropMenuStateRef = useRef(edgeDropMenuState)
+  edgeDropMenuStateRef.current = edgeDropMenuState
 
   const existingInputPortNames = useMemo(
     () =>
@@ -648,6 +710,62 @@ function PageInner() {
     [setNodes, connectEditorInput],
   )
 
+  // Edge dropped on the canvas -> "Show in <view>": a view node at the drop
+  // point, fed by a dashed (inspector) edge from the dragged output.
+  const viewCatalogRef = useRef<Map<string, { title: string; size?: { width: number; height: number } }>>(new Map())
+  const handleEdgeDropView = useCallback(
+    (viewKey: string, input: string) => {
+      const drop = edgeDropMenuStateRef.current
+      const updater = editorModelUpdaterRef.current
+      const endpoint = refGraphEndpoint.current
+      if (!drop || !drop.sourceHandleId || !updater || !endpoint) return
+      const entry = viewCatalogRef.current.get(viewKey)
+      const size = entry?.size ?? { width: 420, height: 320 }
+      const id = generateEditorNodeId("PluginViewNode")
+      const nodeData = { view: viewKey, settings: {} }
+      const node = nodeRegistryRef.current.registerEditorNode(
+        makeEditorNode({
+          id,
+          type: "PluginViewNode",
+          position: drop.flowPosition,
+          data: { label: entry?.title ?? viewKey, graphEndpoint: endpoint, editorModelUpdater: updater, nodeData },
+          style: { width: size.width, height: size.height },
+          dragHandle: ".drag-handle",
+        } as Node),
+      )
+      setNodes(nds => [...nds, node])
+      updater.addEditorNode(node.id, "PluginViewNode", drop.flowPosition.x, drop.flowPosition.y)
+      updater.setNodeLabel(node.id, entry?.title ?? viewKey)
+      updater.updateNodeSize(node.id, size.width, size.height)
+      updater.patchNodeData(node.id, nodeData)
+      connectEditorInput(
+        { source: drop.sourceNodeId, sourceHandle: drop.sourceHandleId, target: node.id, targetHandle: input },
+        "node",
+      )
+    },
+    [setNodes, connectEditorInput],
+  )
+
+  // "Make output port" on a dashed edge: engine node -> new $output port ->
+  // the same display input (solid). The port dialog is pre-filled.
+  const [promoteRequest, setPromoteRequest] = useState<
+    (EdgeEndpoints & { valueTypes: string; position: { x: number; y: number } }) | null
+  >(null)
+
+  const handlePromoteRequest = useCallback((edge: EdgeEndpoints) => {
+    const instance = reactFlowInstanceRef.current
+    const source = instance?.getNode(edge.source) as BasicEngineNode | undefined
+    if (!source || !edge.sourceHandle) return
+    const output = source.data.nodeData.outputs.find(o => o.name === edge.sourceHandle)
+    const width = instance?.getInternalNode(edge.source)?.measured.width ?? 200
+    setPromoteRequest({
+      ...edge,
+      valueTypes: output ? output.values.map(v => v.type).join(",") : "",
+      // Port nodes live in the $graph frame: position relative to it.
+      position: { x: source.position.x + width + 60, y: source.position.y },
+    })
+  }, [])
+
   // --- Edge-drop: onConnectStart / onConnectEnd ---
 
   const onConnectStart = useCallback(
@@ -803,6 +921,7 @@ function PageInner() {
     useState(false)
   const [nodeSearchDialogOpen, setNodeSearchDialogOpen] = useState(false)
   const [dataBrowserOpen, setDataBrowserOpen] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
 
   useEffect(() => {
     if (!engineGatewayState.initialized) {
@@ -2066,7 +2185,18 @@ function PageInner() {
         engineGatewayUrl={connectedEngineUrl}
         graphName={routerState.hash.slice(1) || undefined}
       >
-      <InspectorBridge onPin={handlePinRequest} availableRef={inspectorAvailableRef} />
+      <InspectorBridge
+        onPin={handlePinRequest}
+        onPromote={handlePromoteRequest}
+        availableRef={inspectorAvailableRef}
+      />
+      <ViewCatalogProvider engineGatewayUrl={connectedEngineUrl} builtins={BUILTIN_VIEWS}>
+      <ViewPrototypesBridge
+        graphEndpoint={refGraphEndpoint.current}
+        editorModelUpdater={editorModelUpdaterRef.current}
+        onChange={setViewPrototypes}
+        catalogRef={viewCatalogRef}
+      />
       <ReactFlowProvider>
         {/* <AppBar
         css={css`
@@ -2134,6 +2264,12 @@ function PageInner() {
             gap: 4,
           })}
         >
+          <EngineAboutControls
+            engineGatewayUrl={connectedEngineUrl}
+            open={aboutOpen}
+            onOpen={() => setAboutOpen(true)}
+            onClose={() => setAboutOpen(false)}
+          />
           <InspectorStatusButton />
           <IconButton
             title="Refresh graph"
@@ -2210,6 +2346,14 @@ function PageInner() {
             >
               Engine Gateway Settings
             </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setAboutOpen(true)
+                setSettingsMenuAnchorEl(null)
+              }}
+            >
+              About nonoha Editor
+            </MenuItem>
 
             <div
               css={css({
@@ -2267,17 +2411,19 @@ function PageInner() {
           onClose={() => {
             setNodeAddDialogOpen(false)
           }}
-          nodePrototypes={nodePrototypes}
+          nodePrototypes={allNodePrototypes}
           onNodeAdd={node => {
             if (node.type == undefined) {
               return
             }
-            editorModelUpdaterRef.current?.addEditorNode(
-              node.id,
-              node.type,
-              node.position.x,
-              node.position.y,
-            )
+            const updater = editorModelUpdaterRef.current
+            updater?.addEditorNode(node.id, node.type, node.position.x, node.position.y)
+            // Views (and other prototypes with initial data) persist it right away.
+            const initial = (node.data as { nodeData?: Record<string, unknown> }).nodeData
+            if (initial) updater?.patchNodeData(node.id, initial)
+            if (node.type === "PluginViewNode") updater?.setNodeLabel(node.id, String(node.data.label))
+            const style = node.style as { width?: number; height?: number } | undefined
+            if (style?.width && style?.height) updater?.updateNodeSize(node.id, style.width, style.height)
             setNodes(nds => [...nds, node])
           }}
           graphEditDisabled={GRAPH_EDIT_DISABLED}
@@ -2289,11 +2435,38 @@ function PageInner() {
           graphEndpoint={refGraphEndpoint.current}
           onClose={() => setEdgeDropMenuState(null)}
           onPortCreated={handleEdgeDropPortCreated}
+          onViewSelected={handleEdgeDropView}
           existingPortNames={
             edgeDropMenuState?.sourceHandleType === "target"
               ? existingInputPortNames
               : existingOutputPortNames
           }
+        />
+        <PortAddDialog
+          open={promoteRequest !== null}
+          portType="output"
+          graphEndpoint={refGraphEndpoint.current}
+          onClose={() => setPromoteRequest(null)}
+          onPortAdd={portNode => {
+            const request = promoteRequest
+            setPromoteRequest(null)
+            if (!request) return
+            handleEdgeDropPortCreated(portNode, {
+              sourceNodeId: request.source,
+              sourceHandleId: request.sourceHandle,
+              portNodeId: portNode.id,
+              portType: "output",
+            })
+            // Same display input, now fed by the port (replaces the dashed edge).
+            connectEditorInput(
+              { source: portNode.id, sourceHandle: null, target: request.target, targetHandle: request.targetHandle },
+              "output",
+            )
+          }}
+          initialValueTypeList={promoteRequest?.valueTypes}
+          initialPosition={promoteRequest?.position}
+          initialPortName={promoteRequest?.sourceHandle ?? undefined}
+          existingPortNames={existingOutputPortNames}
         />
         <EngineGatewaySettingsDialog
           open={engineGatewaySettingsDialogOpen}
@@ -2345,6 +2518,7 @@ function PageInner() {
         {/* Progress indicator for buildGraph and paste operations */}
         <ProgressIndicator {...progressState} delayMs={800} />
       </ReactFlowProvider>
+      </ViewCatalogProvider>
       </InspectorProvider>
     </NodeCatalogProvider>
   )

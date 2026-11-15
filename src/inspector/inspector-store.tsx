@@ -36,6 +36,7 @@ import {
 const DEFAULT_KEY = "nonoha-editor:inspector"
 const FLUSH_MS = 150
 const ACTIVITY_INTERVAL_MS = 500
+const MAX_PREVIEW_SLOTS = 8 // in-node previews sampling at once
 const CLIENT_NAME = `nonoha-editor/${process.env.NEXT_PUBLIC_EDITOR_VERSION ?? "dev"}`
 
 export function readInspectorDefault(): boolean {
@@ -64,6 +65,10 @@ export interface InspectorUiState {
   enabled: boolean
   status: InspectorStatus
   engineVersion: string | undefined
+  /** Capabilities endpoint: "none" for engines before 1.1 (404). */
+  capabilities: "loading" | "none" | "error" | "ok"
+  /** Plugin static files (views) are served by the engine. */
+  pluginStatic: boolean
 }
 
 export interface EdgeEndpoints {
@@ -99,6 +104,8 @@ export class EditorInspector {
   private readonly entryKeys = new WeakMap<ActivityEntry, string>()
   private readonly stateListeners = new Set<Listener>()
   private state: InspectorUiState
+  private previewSlots = 0
+  private readonly slotListeners = new Set<Listener>()
 
   constructor(engineGatewayUrl: string, graphName: string) {
     this.engineGatewayUrl = engineGatewayUrl
@@ -108,6 +115,8 @@ export class EditorInspector {
       enabled: readInspectorDefault(),
       status: { state: "idle", reasons: [] },
       engineVersion: undefined,
+      capabilities: "loading",
+      pluginStatic: false,
     }
   }
 
@@ -119,11 +128,13 @@ export class EditorInspector {
         this.setState({
           supported: Boolean(capabilities?.inspector?.enabled),
           engineVersion: capabilities?.engine,
+          capabilities: capabilities ? "ok" : "none",
+          pluginStatic: Boolean(capabilities?.plugin_static),
         })
         if (this.state.enabled) this.connect()
       })
       .catch(() => {
-        if (!this.disposed) this.setState({ supported: false })
+        if (!this.disposed) this.setState({ supported: false, capabilities: "error" })
       })
   }
 
@@ -249,6 +260,25 @@ export class EditorInspector {
     }
   }
 
+  // --- in-node previews -------------------------------------------------------------
+
+  /** Take one of the MAX_PREVIEWS slots; false when all are in use. */
+  acquirePreviewSlot(): boolean {
+    if (this.previewSlots >= MAX_PREVIEW_SLOTS) return false
+    this.previewSlots++
+    return true
+  }
+
+  releasePreviewSlot(): void {
+    if (this.previewSlots > 0) this.previewSlots--
+    this.slotListeners.forEach(listener => listener())
+  }
+
+  onPreviewSlotFreed(listener: Listener): () => void {
+    this.slotListeners.add(listener)
+    return () => this.slotListeners.delete(listener)
+  }
+
   // --- watches ---------------------------------------------------------------------
 
   /** Watch a port; null while the inspector is off or unsupported. */
@@ -291,6 +321,8 @@ const NO_STATE: InspectorUiState = {
   enabled: false,
   status: { state: "idle", reasons: [] },
   engineVersion: undefined,
+  capabilities: "loading",
+  pluginStatic: false,
 }
 const noopSubscribe = () => () => {}
 
