@@ -191,3 +191,96 @@ describe("HeatmapRaster.computeMinMax / clear / configure", () => {
     expect(raster.computeMinMax()).toBeUndefined()
   })
 })
+
+describe("HeatmapRaster incremental bookkeeping", () => {
+  // Brute-force min/max over valueAt() for cross-checking.
+  function bruteMinMax(raster: HeatmapRaster) {
+    let min = Infinity
+    let max = -Infinity
+    for (let c = 0; c < raster.xLength; c++) {
+      for (let r = 0; r < raster.yLength; r++) {
+        const v = raster.valueAt(c, r)
+        if (Number.isNaN(v)) continue
+        if (v < min) min = v
+        if (v > max) max = v
+      }
+    }
+    return min > max ? undefined : { min, max }
+  }
+
+  it("drops evicted extremes when the ring overwrites their column", () => {
+    const raster = new HeatmapRaster()
+    raster.configure(2, 2)
+    raster.writeColumns([100, 1, -50, 2], 2) // col0 [100,1], col1 [-50,2]
+    expect(raster.computeMinMax()).toEqual({ min: -50, max: 100 })
+    raster.writeColumns([3, 4], 1) // overwrites col0 -> max 100 evicted
+    expect(raster.computeMinMax()).toEqual({ min: -50, max: 4 })
+    raster.writeColumns([5, 6], 1) // overwrites col1 -> min -50 evicted
+    expect(raster.computeMinMax()).toEqual({ min: 3, max: 6 })
+  })
+
+  it("matches a brute-force scan on random data with NaNs", () => {
+    const raster = new HeatmapRaster()
+    raster.configure(7, 5)
+    let seed = 1
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) * 200 - 100
+    for (let step = 0; step < 40; step++) {
+      const batch = 1 + (step % 4)
+      const data = Array.from({ length: batch * 5 }, (_, i) =>
+        i % 6 === 0 ? NaN : rand(),
+      )
+      raster.writeColumns(data, batch)
+      expect(raster.computeMinMax()).toEqual(bruteMinMax(raster))
+    }
+  })
+
+  it("treats an all-NaN column as empty", () => {
+    const raster = new HeatmapRaster()
+    raster.configure(2, 2)
+    raster.writeColumns([NaN, NaN], 1)
+    expect(raster.computeMinMax()).toBeUndefined()
+  })
+
+  it("reuses the dirty array between calls", () => {
+    const raster = new HeatmapRaster()
+    raster.configure(4, 1)
+    const first = raster.writeColumns([1, 2], 2)
+    expect(first).toEqual([0, 1])
+    const second = raster.writeColumns([3], 1)
+    expect(second).toBe(first)
+    expect(second).toEqual([2])
+  })
+
+  it("paints identically through the 32-bit and the byte path", () => {
+    const make = () => {
+      const raster = new HeatmapRaster()
+      raster.configure(3, 4)
+      raster.writeColumns(
+        [0, 0.25, NaN, 1, -1, 0.5, 0.75, 2, 0.1, 0.2, 0.3, NaN],
+        3,
+      )
+      return raster
+    }
+    const lut = buildPortlandLut()
+    // A LUT view with a byteOffset that is not 4-aligned forces byte stores.
+    const unaligned = new Uint8ClampedArray(new ArrayBuffer(lut.length + 1), 1, lut.length)
+    unaligned.set(lut)
+
+    const fast = make()
+    fast.paintAll(0, 1, lut)
+    const slow = make()
+    slow.paintAll(0, 1, unaligned)
+
+    // NaN cells: transparent in both (RGB of transparent pixels may differ).
+    for (let i = 0; i < fast.pixels.length; i += 4) {
+      expect(fast.pixels[i + 3]).toBe(slow.pixels[i + 3])
+      if (fast.pixels[i + 3] !== 0) {
+        expect([fast.pixels[i], fast.pixels[i + 1], fast.pixels[i + 2]]).toEqual([
+          slow.pixels[i],
+          slow.pixels[i + 1],
+          slow.pixels[i + 2],
+        ])
+      }
+    }
+  })
+})

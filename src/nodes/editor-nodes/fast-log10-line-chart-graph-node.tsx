@@ -291,6 +291,7 @@ export type FastLog10LineChartGraphNode = Node<{
   graphEndpoint: GraphEndpoint | undefined
   editorModelUpdater: EditorModelUpdater
   nodeData?: {
+    recordOnOpen?: boolean
     graphWidth?: number
     graphHeight?: number
     traceDim?: number
@@ -351,7 +352,8 @@ export const FastLog10LineChartGraphNode = memo(
       [props.id, setNodes]
     )
 
-    const [isRecording, setIsRecording] = useState(false)
+    // recordOnOpen: start recording when the node opens (e.g. pinned monitors).
+    const [isRecording, setIsRecording] = useState(props.data.nodeData?.recordOnOpen === true)
     const [detailsOpen, setDetailsOpen] = useState(false)
     const [graphError, setGraphError] = useState<string | undefined>()
 

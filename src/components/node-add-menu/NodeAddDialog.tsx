@@ -62,6 +62,8 @@ export interface PortAddDialogProps {
   initialPosition?: { x: number; y: number }
   /** Existing port names for duplicate validation and reference display. */
   existingPortNames?: string[]
+  /** Pre-filled port name (user can still edit). */
+  initialPortName?: string
 }
 
 export function PortAddDialog({
@@ -73,6 +75,7 @@ export function PortAddDialog({
   initialValueTypeList,
   initialPosition,
   existingPortNames,
+  initialPortName,
 }: PortAddDialogProps) {
   const [portName, setPortName] = useState("")
   const [valueTypeList, setValueTypeList] = useState("")
@@ -80,10 +83,10 @@ export function PortAddDialog({
   // Reset fields when dialog opens
   useEffect(() => {
     if (open) {
-      setPortName("")
+      setPortName(initialPortName ?? "")
       setValueTypeList(initialValueTypeList ?? "")
     }
-  }, [open, initialValueTypeList])
+  }, [open, initialValueTypeList, initialPortName])
 
   const portNameError = useMemo(() => {
     const charError = validatePortName(portName)

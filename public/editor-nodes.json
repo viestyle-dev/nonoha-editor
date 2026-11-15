@@ -1,0 +1,334 @@
+{
+  "schema": 1,
+  "about": "Editor nodes of nonoha-editor: display and input nodes that live outside the engine graph. Single source for the editor's node registry and add menu; also served as /editor-nodes.json and shipped in editor_html for tools and AI agents.",
+  "settingsFile": "graphs/<graph>.vng/editors/nonoha-editor/models/settings.json",
+  "nodeId": "$editor:<type>_<unique suffix>, e.g. $editor:FastTimeSeriesGraphNode_a1b2c3",
+  "layout": "settings.nodes[<id>] = {type, x, y, width?, height?, label?, data: {<settings>}}; label is the title shown (defaults to the id). Keep editor nodes outside the $graph frame (settings.nodes.$graph = {width, height}).",
+  "connections": {
+    "fromOutputPort": "Input handles connect from $output:<port> nodes of the graph. Stored in settings.editor_edges: key '<source>-<target>:<targetHandle>', value {source, sourceHandle: null, target, targetHandle}. Values arrive complete (same values the app sees).",
+    "fromEngineNode": "With engines that report inspector capabilities (1.1+), input handles can also connect straight from an engine node output (source '<Node>', sourceHandle '<port>'). Drawn dashed; values are sampled by the inspector and can miss updates.",
+    "toInputPort": "Output handles of input nodes connect to $input:<port> nodes.",
+    "limit": "Each input handle takes one connection."
+  },
+  "nodes": [
+    {
+      "type": "TimeSeriesGraphNode",
+      "label": "TimeSeriesGraph",
+      "category": "Visualization",
+      "description": "Scrolling line chart of values over time (Plotly)",
+      "inputs": [{ "name": "series", "types": ["any"], "description": "Numeric values to append; 2D values plot one trace per column" }],
+      "outputs": [],
+      "settings": {
+        "xLength": { "type": "number", "default": 1500, "description": "Samples kept on the x axis" },
+        "graphWidth": { "type": "number", "default": 480, "description": "Plot width in px" },
+        "graphHeight": { "type": "number", "default": 320, "description": "Plot height in px" },
+        "yMin": { "type": "number", "description": "Fixed y minimum (auto when absent)" },
+        "yMax": { "type": "number", "description": "Fixed y maximum (auto when absent)" }
+      }
+    },
+    {
+      "type": "FastTimeSeriesGraphNode",
+      "label": "FastTimeSeriesGraph",
+      "category": "Visualization",
+      "description": "High-performance scrolling time series (uPlot) for fast or large data",
+      "inputs": [
+        { "name": "series", "types": ["any"], "description": "Numeric values to append; each batch row is one sample, columns are traces" },
+        { "name": "rec", "types": ["bool"], "description": "Recording gate: records only while the connected state signal is true (the node's AUTO/MANUAL toggle can suspend signal control)" },
+        { "name": "clear", "types": ["bool"], "description": "Clears the plot on the false->true edge of the connected state signal" }
+      ],
+      "outputs": [],
+      "settings": {
+        "recordOnOpen": { "type": "boolean", "default": false, "description": "Start recording when the editor opens (otherwise press REC)" },
+        "xLength": { "type": "number", "default": 1500, "description": "Samples kept on the x axis" },
+        "graphWidth": { "type": "number", "default": 480, "description": "Plot width in px" },
+        "graphHeight": { "type": "number", "default": 320, "description": "Plot height in px" },
+        "yMin": { "type": "number", "description": "Fixed y minimum (auto when absent)" },
+        "yMax": { "type": "number", "description": "Fixed y maximum (auto when absent)" }
+      }
+    },
+    {
+      "type": "LineChartGraphNode",
+      "label": "LineChartGraph",
+      "category": "Visualization",
+      "description": "Line chart of the latest array (x labels + traces), Plotly",
+      "inputs": [
+        { "name": "xLabels", "types": ["any"], "description": "X values (e.g. frequencies)" },
+        { "name": "traces", "types": ["any"], "description": "Y values: 1D array, or 2D for several traces" }
+      ],
+      "outputs": [],
+      "settings": {
+        "graphWidth": { "type": "number", "default": 480, "description": "Plot width in px" },
+        "graphHeight": { "type": "number", "default": 320, "description": "Plot height in px" },
+        "xMin": { "type": "number", "description": "Fixed x minimum" },
+        "xMax": { "type": "number", "description": "Fixed x maximum" },
+        "yMin": { "type": "number", "description": "Fixed y minimum" },
+        "yMax": { "type": "number", "description": "Fixed y maximum" }
+      }
+    },
+    {
+      "type": "Log10LineChartGraphNode",
+      "label": "Log10LineChartGraph",
+      "category": "Visualization",
+      "description": "Line chart with optional log10 x/y axes, Plotly",
+      "inputs": [
+        { "name": "xLabels", "types": ["any"], "description": "X values" },
+        { "name": "traces", "types": ["any"], "description": "Y values: 1D array, or 2D for several traces" }
+      ],
+      "outputs": [],
+      "settings": {
+        "graphWidth": { "type": "number", "default": 480, "description": "Plot width in px" },
+        "graphHeight": { "type": "number", "default": 320, "description": "Plot height in px" },
+        "xLogScale": { "type": "boolean", "default": false, "description": "Log10 x axis" },
+        "yLogScale": { "type": "boolean", "default": false, "description": "Log10 y axis" },
+        "xMin": { "type": "number", "description": "Fixed x minimum" },
+        "xMax": { "type": "number", "description": "Fixed x maximum" },
+        "yMin": { "type": "number", "description": "Fixed y minimum" },
+        "yMax": { "type": "number", "description": "Fixed y maximum" }
+      }
+    },
+    {
+      "type": "FastLineChartGraphNode",
+      "label": "FastLineChartGraph",
+      "category": "Visualization",
+      "description": "High-performance line chart of the latest array (uPlot)",
+      "inputs": [
+        { "name": "xLabels", "types": ["any"], "description": "X values" },
+        { "name": "traces", "types": ["any"], "description": "Y values: 1D array, or 2D for several traces" },
+        { "name": "rec", "types": ["bool"], "description": "Recording gate (see FastTimeSeriesGraphNode)" }
+      ],
+      "outputs": [],
+      "settings": {
+        "recordOnOpen": { "type": "boolean", "default": false, "description": "Start recording when the editor opens (otherwise press REC)" },
+        "graphWidth": { "type": "number", "default": 480, "description": "Plot width in px" },
+        "graphHeight": { "type": "number", "default": 320, "description": "Plot height in px" },
+        "traceDim": { "type": "number", "default": -1, "description": "Axis of 2D traces that holds the traces (-1 = last)" },
+        "xMin": { "type": "number", "description": "Fixed x minimum" },
+        "xMax": { "type": "number", "description": "Fixed x maximum" },
+        "yMin": { "type": "number", "description": "Fixed y minimum" },
+        "yMax": { "type": "number", "description": "Fixed y maximum" }
+      }
+    },
+    {
+      "type": "FastLog10LineChartGraphNode",
+      "label": "FastLog10LineChartGraph",
+      "category": "Visualization",
+      "description": "High-performance line chart with optional log10 axes (uPlot)",
+      "inputs": [
+        { "name": "xLabels", "types": ["any"], "description": "X values" },
+        { "name": "traces", "types": ["any"], "description": "Y values: 1D array, or 2D for several traces" },
+        { "name": "rec", "types": ["bool"], "description": "Recording gate (see FastTimeSeriesGraphNode)" }
+      ],
+      "outputs": [],
+      "settings": {
+        "recordOnOpen": { "type": "boolean", "default": false, "description": "Start recording when the editor opens (otherwise press REC)" },
+        "graphWidth": { "type": "number", "default": 480, "description": "Plot width in px" },
+        "graphHeight": { "type": "number", "default": 320, "description": "Plot height in px" },
+        "traceDim": { "type": "number", "default": -1, "description": "Axis of 2D traces that holds the traces (-1 = last)" },
+        "xLogScale": { "type": "boolean", "default": false, "description": "Log10 x axis" },
+        "yLogScale": { "type": "boolean", "default": false, "description": "Log10 y axis" },
+        "xMin": { "type": "number", "description": "Fixed x minimum" },
+        "xMax": { "type": "number", "description": "Fixed x maximum" },
+        "yMin": { "type": "number", "description": "Fixed y minimum" },
+        "yMax": { "type": "number", "description": "Fixed y maximum" }
+      }
+    },
+    {
+      "type": "HeatmapGraphNode",
+      "label": "HeatmapGraph",
+      "category": "Visualization",
+      "description": "Scrolling heatmap or surface of 1D rows (Plotly)",
+      "inputs": [
+        { "name": "series", "types": ["any"], "description": "Rows to append [batch, yLength]; each batch row becomes one column" },
+        { "name": "yLabels", "types": ["any"], "description": "Y values for the rows (e.g. frequencies)" },
+        { "name": "rec", "types": ["bool"], "description": "Recording gate (see FastTimeSeriesGraphNode)" },
+        { "name": "clear", "types": ["bool"], "description": "Clears the plot on the false->true edge" }
+      ],
+      "outputs": [],
+      "settings": {
+        "recordOnOpen": { "type": "boolean", "default": false, "description": "Start recording when the editor opens (otherwise press REC)" },
+        "graphWidth": { "type": "number", "default": 480, "description": "Plot width in px" },
+        "graphHeight": { "type": "number", "default": 320, "description": "Plot height in px" },
+        "xLength": { "type": "number", "default": 500, "description": "Columns kept" },
+        "plotType": { "type": "string", "enum": ["heatmap", "surface"], "default": "heatmap", "description": "2D heatmap or 3D surface" },
+        "zMin": { "type": "number", "description": "Fixed color minimum" },
+        "zMax": { "type": "number", "description": "Fixed color maximum" },
+        "colormap": { "type": "string", "enum": ["viridis", "magma", "inferno", "plasma", "cividis", "portland"], "default": "viridis", "description": "Color map" }
+      }
+    },
+    {
+      "type": "FastHeatmapGraphNode",
+      "label": "FastHeatmapGraph",
+      "category": "Visualization",
+      "description": "High-performance scrolling heatmap (uPlot + ImageData), e.g. spectrograms",
+      "inputs": [
+        { "name": "series", "types": ["any"], "description": "Rows to append [batch, yLength]; each batch row becomes one column" },
+        { "name": "yLabels", "types": ["f32"], "description": "Y values for the rows (e.g. frequencies)" },
+        { "name": "rec", "types": ["bool"], "description": "Recording gate (see FastTimeSeriesGraphNode)" },
+        { "name": "clear", "types": ["bool"], "description": "Clears the plot on the false->true edge" }
+      ],
+      "outputs": [],
+      "settings": {
+        "recordOnOpen": { "type": "boolean", "default": false, "description": "Start recording when the editor opens (otherwise press REC)" },
+        "xLength": { "type": "number", "default": 500, "description": "Columns kept" },
+        "graphWidth": { "type": "number", "default": 480, "description": "Plot width in px" },
+        "graphHeight": { "type": "number", "default": 320, "description": "Plot height in px" },
+        "yMin": { "type": "number", "description": "Fixed y minimum" },
+        "yMax": { "type": "number", "description": "Fixed y maximum" },
+        "zMin": { "type": "number", "description": "Fixed color minimum (auto when absent)" },
+        "zMax": { "type": "number", "description": "Fixed color maximum (auto when absent)" },
+        "colormap": { "type": "string", "enum": ["viridis", "magma", "inferno", "plasma", "cividis", "portland"], "default": "viridis", "description": "Color map" }
+      }
+    },
+    {
+      "type": "ScatterPlotNode",
+      "label": "ScatterPlot",
+      "category": "Visualization",
+      "description": "Scatter plot of points",
+      "inputs": [{ "name": "series", "types": ["any"], "description": "Points as batch rows of (x, y), i.e. values of shape [N, 2]" }],
+      "outputs": [],
+      "settings": {}
+    },
+    {
+      "type": "ImageDisplayNode",
+      "label": "ImageDisplay",
+      "category": "Visualization",
+      "description": "Shows images: raw pixels (gray H x W, RGB/BGR H x W x 3, RGBA H x W x 4) or encoded JPEG/PNG/WebP bytes",
+      "inputs": [{ "name": "image", "types": ["u8"], "description": "u8 image [H x W(x C)] or encoded bytes [N]" }],
+      "outputs": [],
+      "size": { "width": 320, "height": 280 },
+      "settings": {
+        "decodeFormat": { "type": "string", "enum": ["auto", "rgba", "jpeg"], "default": "auto", "description": "auto: decide from the shape and magic bytes" },
+        "colorOrder": { "type": "string", "enum": ["rgb", "bgr"], "default": "rgb", "description": "Channel order of 3/4-channel frames (bgr for OpenCV output)" }
+      }
+    },
+    {
+      "type": "NumberInputNode",
+      "label": "NumberInput",
+      "category": "Input",
+      "description": "Text field that sends a number",
+      "inputs": [],
+      "outputs": [{ "name": "value", "types": ["any"], "description": "The entered number" }],
+      "settings": {
+        "inputValue": { "type": "string", "default": "0", "description": "Current text" },
+        "inputValueType": { "type": "number", "default": 1, "description": "PortDataType code of the sent value (1 = i8, 5 = i32, 9 = f32, 10 = f64)" }
+      }
+    },
+    {
+      "type": "StringInputNode",
+      "label": "StringInput",
+      "category": "Input",
+      "description": "Text field that sends a string",
+      "inputs": [],
+      "outputs": [{ "name": "value", "types": ["str"], "description": "The entered string" }],
+      "settings": { "inputValue": { "type": "string", "default": "", "description": "Current text" } }
+    },
+    {
+      "type": "FaderNode",
+      "label": "Fader",
+      "category": "Input",
+      "description": "Slider that sends a number while it moves",
+      "inputs": [],
+      "outputs": [{ "name": "value", "types": ["any"], "description": "Current slider value" }],
+      "settings": {
+        "value": { "type": "number", "default": 0, "description": "Current value" },
+        "min": { "type": "number", "default": 0, "description": "Minimum" },
+        "max": { "type": "number", "default": 100, "description": "Maximum" },
+        "step": { "type": "number", "default": 1, "description": "Step" },
+        "valueType": { "type": "number", "default": 9, "description": "PortDataType code of the sent value (9 = f32)" }
+      }
+    },
+    {
+      "type": "ValuesInputNode",
+      "label": "ValuesInput",
+      "category": "Input",
+      "description": "Text field that sends typed values (comma separated)",
+      "inputs": [],
+      "outputs": [{ "name": "values", "types": ["any"], "description": "The entered values" }],
+      "settings": { "inputValuesText": { "type": "string", "description": "Values text" } }
+    },
+    {
+      "type": "TriggerNode",
+      "label": "Trigger",
+      "category": "Input",
+      "description": "Button that sends a bool when pressed",
+      "inputs": [],
+      "outputs": [{ "name": "trigger", "types": ["bool"], "description": "Trigger signal" }],
+      "settings": { "boolValue": { "type": "boolean", "default": true, "description": "Value sent on press" } }
+    },
+    {
+      "type": "CameraCaptureNode",
+      "label": "CameraCapture",
+      "category": "Input",
+      "description": "Captures frames from the browser's camera",
+      "inputs": [],
+      "outputs": [{ "name": "image", "types": ["u8"], "description": "Captured frame" }],
+      "settings": {}
+    },
+    {
+      "type": "LabeledNumberDisplayNode",
+      "label": "LabeledNumberDisplay",
+      "category": "Display",
+      "description": "Shows one number large, optionally mapped to a label",
+      "inputs": [{ "name": "values", "types": ["any"], "description": "Values; the element at targetIndex is shown" }],
+      "outputs": [],
+      "settings": {
+        "targetIndex": { "type": "number", "default": 0, "description": "Index of the value to show" },
+        "mapper": { "type": "string", "default": "", "description": "Optional value-to-label mapping" }
+      }
+    },
+    {
+      "type": "ValuesListDisplayNode",
+      "label": "ValuesListDisplay",
+      "category": "Display",
+      "description": "Shows the latest values as a list",
+      "inputs": [{ "name": "values", "types": ["any"], "description": "Values to show" }],
+      "outputs": [],
+      "size": { "width": 200, "height": 150 },
+      "settings": {}
+    },
+    {
+      "type": "ValuesLogDisplayNode",
+      "label": "ValuesLogDisplay",
+      "category": "Display",
+      "description": "Accumulates received values in a scrollable log",
+      "inputs": [{ "name": "values", "types": ["any"], "description": "Values to log" }],
+      "outputs": [],
+      "size": { "width": 200, "height": 150 },
+      "settings": { "maxEntries": { "type": "number", "default": 500, "description": "Entries kept" } }
+    },
+    {
+      "type": "BytesDisplayNode",
+      "label": "BytesDisplay",
+      "category": "Display",
+      "description": "Shows bytes in hexadecimal",
+      "inputs": [{ "name": "values", "types": ["any"], "description": "Values shown as bytes" }],
+      "outputs": [],
+      "settings": {
+        "targetIndex": { "type": "number", "default": 0, "description": "Index of the value to show" },
+        "bytesPerRow": { "type": "number", "default": 8, "description": "Bytes per row" }
+      }
+    },
+    {
+      "type": "ColorDisplayNode",
+      "label": "ColorDisplay",
+      "category": "Display",
+      "description": "Shows a color swatch from color values",
+      "inputs": [{ "name": "values", "types": ["any"], "description": "Color components" }],
+      "outputs": [],
+      "settings": {
+        "targetIndex": { "type": "number", "default": 0, "description": "Index of the color to show" },
+        "dataType": { "type": "number", "default": 2, "description": "PortDataType code of the components (2 = u8 0-255, 9 = f32 0-1)" },
+        "colorFormat": { "type": "string", "enum": ["RGB", "RGBA", "ARGB", "BGR", "BGRA", "RGBW"], "default": "RGB", "description": "Component order" }
+      }
+    },
+    {
+      "type": "CommentNode",
+      "label": "Comment",
+      "category": "Utility",
+      "description": "Text note on the canvas",
+      "inputs": [],
+      "outputs": [],
+      "settings": { "comment": { "type": "string", "description": "Text" } }
+    }
+  ]
+}

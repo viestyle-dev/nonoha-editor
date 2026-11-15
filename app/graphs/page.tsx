@@ -110,9 +110,52 @@ import {
   GraphSessionStoreProvider,
   useGraphSessionStore,
 } from "@/src/stores/graph-session-store"
+import {
+  InspectorProvider,
+  useInspector,
+  useInspectorState,
+  type PinRequest,
+} from "@/src/inspector/inspector-store"
+import { InspectorStatusButton } from "@/src/inspector/inspector-status-button"
+import { EDITOR_NODE_SPEC_BY_TYPE } from "@/src/editor-nodes/specs"
+import { findFreeSpot, rectsOverlap, type Rect } from "@/src/lib/graph/free-spot"
+import type { ValueKind } from "nonoha-client-js"
 
 const GRAPH_EDIT_DISABLED =
   process.env.NEXT_PUBLIC_GRAPH_EDIT_DISABLED == "true"
+
+/** Display node (and its input handle) created when a peeked port is pinned. */
+const PIN_TARGETS: Partial<Record<ValueKind, { type: string; handle: string }>> = {
+  image: { type: "ImageDisplayNode", handle: "image" },
+  bytes: { type: "ImageDisplayNode", handle: "image" },
+  scalar: { type: "FastTimeSeriesGraphNode", handle: "series" },
+  vector: { type: "FastLineChartGraphNode", handle: "traces" },
+}
+
+/**
+ * Connects the graph page to the inspector context (the page renders the
+ * provider itself, so it cannot read the context directly): registers the
+ * pin handler and mirrors whether dashed connections are available.
+ */
+function InspectorBridge({
+  onPin,
+  availableRef,
+}: {
+  onPin: (request: PinRequest) => void
+  availableRef: { current: boolean }
+}) {
+  const inspector = useInspector()
+  const { supported, enabled } = useInspectorState()
+  availableRef.current = Boolean(supported && enabled)
+  useEffect(() => {
+    if (!inspector) return
+    inspector.pinHandler = onPin
+    return () => {
+      if (inspector.pinHandler === onPin) inspector.pinHandler = null
+    }
+  }, [inspector, onPin])
+  return null
+}
 
 export default function Page() {
   return (
@@ -308,6 +351,54 @@ function PageInner() {
     [setNodes, handleWaypointMerge],
   )
 
+  const inspectorAvailableRef = useRef(false)
+
+  // An editor (display) input takes one connection: a new one replaces it.
+  // sourceType "output": solid edge from a $output port node.
+  // sourceType "node": dashed edge from an engine node output (inspector).
+  const connectEditorInput = useCallback(
+    (connection: Connection, sourceType: "output" | "node") => {
+      const updater = editorModelUpdaterRef.current
+      const edgeId = getEditorEdgeId(
+        connection.source,
+        connection.sourceHandle,
+        connection.target,
+        connection.targetHandle,
+      )
+      const current = reactFlowInstanceRef.current?.getEdges() ?? []
+      const replaced = current.filter(
+        e =>
+          e.target === connection.target &&
+          (e.targetHandle ?? null) === (connection.targetHandle ?? null) &&
+          e.id !== edgeId,
+      )
+      for (const edge of replaced) updater?.removeEditorEdge(edge.id)
+      const replacedIds = new Set(replaced.map(e => e.id))
+      setEdges(eds =>
+        addEdge(
+          {
+            id: edgeId,
+            type: "BasicNodeEdge",
+            ...connection,
+            data: {
+              source: { type: sourceType },
+              target: { type: "editor" },
+            },
+          } as BasicEdge,
+          replacedIds.size ? eds.filter(e => !replacedIds.has(e.id)) : eds,
+        ),
+      )
+      updater?.addEditorEdge(
+        edgeId,
+        connection.source,
+        connection.sourceHandle,
+        connection.target,
+        connection.targetHandle,
+      )
+    },
+    [setEdges],
+  )
+
   const onConnectNode = useCallback(
     (connection: Connection) => {
       // Clear start params so onConnectEnd won't show the context menu
@@ -358,38 +449,18 @@ function PageInner() {
         return
       }
       if (sourceNodeType == "output" && targetNodeType == "editor") {
-        const edgeId = getEditorEdgeId(
-          connection.source,
-          connection.sourceHandle,
-          connection.target,
-          connection.targetHandle,
-        )
-
-        setEdges(eds =>
-          addEdge(
-            {
-              id: edgeId,
-              type: "BasicNodeEdge",
-              ...connection,
-              data: {
-                source: {
-                  type: "output",
-                },
-                target: {
-                  type: "editor",
-                },
-              },
-            } as BasicEdge,
-            eds,
-          ),
-        )
-        editorModelUpdaterRef.current?.addEditorEdge(
-          edgeId,
-          connection.source,
-          connection.sourceHandle,
-          connection.target,
-          connection.targetHandle,
-        )
+        connectEditorInput(connection, "output")
+        return
+      }
+      if (sourceNodeType == "node" && targetNodeType == "editor") {
+        if (!inspectorAvailableRef.current) {
+          enqueueSnackbar(
+            "Direct connections need the inspector (engine 1.1 or later, turned on). Connect the node to an output port and the output port to the display instead.",
+            { variant: "info" },
+          )
+          return
+        }
+        connectEditorInput(connection, "node")
         return
       }
 
@@ -496,7 +567,85 @@ function PageInner() {
         return
       }
     },
-    [setEdges],
+    [setEdges, connectEditorInput],
+  )
+
+  // Pin from a peek popover: a display node next to the engine node,
+  // connected with a dashed (inspector) edge.
+  const handlePinRequest = useCallback(
+    (request: PinRequest) => {
+      const instance = reactFlowInstanceRef.current
+      const updater = editorModelUpdaterRef.current
+      const endpoint = refGraphEndpoint.current
+      const target = PIN_TARGETS[request.kind]
+      if (!instance || !updater || !endpoint || !target) return
+
+      const source = instance.getInternalNode(request.ref.node)
+      const origin = source?.internals.positionAbsolute ?? { x: 0, y: 0 }
+      const width = source?.measured.width ?? 200
+      const size = EDITOR_NODE_SPEC_BY_TYPE.get(target.type)?.size
+      // Next to the engine node, moved down/right until it overlaps nothing.
+      const occupied: Rect[] = []
+      for (const n of instance.getNodes()) {
+        if (n.id === "$graph") continue
+        const internal = instance.getInternalNode(n.id)
+        if (!internal) continue
+        const abs = internal.internals.positionAbsolute
+        occupied.push({ x: abs.x, y: abs.y, width: internal.measured.width ?? 160, height: internal.measured.height ?? 80 })
+      }
+      const box = size ?? { width: 500, height: 300 }
+      // Next to the node if there is room nearby; otherwise just above the
+      // $graph frame, in line with the node (left to right among other pins).
+      const near = { x: origin.x + width + 60, y: origin.y }
+      let spot = findFreeSpot(near, box, occupied, { columns: 1, rows: 12 })
+      if (spot === near && occupied.some(o => rectsOverlap(o, { ...near, ...box }))) {
+        const frame = instance.getInternalNode("$graph")
+        const frameTop = frame?.internals.positionAbsolute.y ?? 0
+        spot = findFreeSpot(
+          { x: origin.x, y: frameTop - box.height - 60 },
+          box,
+          occupied,
+          { columns: 12, rows: 1, columnWidth: box.width + 40 },
+        )
+      }
+      const x = Math.round(spot.x / 20) * 20
+      const y = Math.round(spot.y / 20) * 20
+      // Images keep the peek's channel order; charts record right away.
+      const nodeData: Record<string, unknown> =
+        target.type === "ImageDisplayNode" ? { colorOrder: request.colorOrder ?? "rgb" } : { recordOnOpen: true }
+
+      const id = generateEditorNodeId(target.type)
+      const node = nodeRegistryRef.current.registerEditorNode(
+        makeEditorNode({
+          id,
+          type: target.type,
+          position: { x, y },
+          data: {
+            label: `${request.ref.node}.${request.ref.port}`,
+            graphEndpoint: endpoint,
+            editorModelUpdater: updater,
+            nodeData,
+          },
+          ...(size ? { style: { width: size.width, height: size.height } } : {}),
+          dragHandle: ".drag-handle",
+        } as Node),
+      )
+      setNodes(nds => [...nds, node])
+      updater.addEditorNode(node.id, target.type, x, y)
+      updater.setNodeLabel(node.id, `${request.ref.node}.${request.ref.port}`)
+      if (size) updater.updateNodeSize(node.id, size.width, size.height)
+      updater.patchNodeData(node.id, nodeData)
+      connectEditorInput(
+        {
+          source: request.ref.node,
+          sourceHandle: request.ref.port,
+          target: node.id,
+          targetHandle: target.handle,
+        },
+        "node",
+      )
+    },
+    [setNodes, connectEditorInput],
   )
 
   // --- Edge-drop: onConnectStart / onConnectEnd ---
@@ -1913,6 +2062,11 @@ function PageInner() {
 
   return (
     <NodeCatalogProvider engineGatewayUrl={connectedEngineUrl}>
+      <InspectorProvider
+        engineGatewayUrl={connectedEngineUrl}
+        graphName={routerState.hash.slice(1) || undefined}
+      >
+      <InspectorBridge onPin={handlePinRequest} availableRef={inspectorAvailableRef} />
       <ReactFlowProvider>
         {/* <AppBar
         css={css`
@@ -1980,6 +2134,7 @@ function PageInner() {
             gap: 4,
           })}
         >
+          <InspectorStatusButton />
           <IconButton
             title="Refresh graph"
             onClick={() => {
@@ -2190,6 +2345,7 @@ function PageInner() {
         {/* Progress indicator for buildGraph and paste operations */}
         <ProgressIndicator {...progressState} delayMs={800} />
       </ReactFlowProvider>
+      </InspectorProvider>
     </NodeCatalogProvider>
   )
 }

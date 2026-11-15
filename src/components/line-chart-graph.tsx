@@ -1,6 +1,14 @@
 import Plotly, { TypedArray } from "plotly.js-dist-min"
 import { CSSProperties, useEffect, useRef } from "react"
 
+import { useChartTheme } from "@/src/hooks/use-chart-theme"
+import { useRafPainter } from "@/src/hooks/use-raf-painter"
+import {
+  applyPlotlyTheme,
+  ChartTheme,
+  plotlyLineStyle,
+} from "@/src/lib/chart-theme"
+
 export interface LineChartPlotData {
   x: number[] | Float32Array | undefined
   traces: (number[] | TypedArray)[]
@@ -17,7 +25,26 @@ export interface LineChartGraphProps {
   yMax?: number
 }
 
+function buildTraces(
+  plotData: LineChartPlotData,
+  theme: ChartTheme,
+): Plotly.Data[] {
+  return plotData.traces.map((y, i) => {
+    return {
+      x: plotData.x,
+      y: y,
+      type: "scatter",
+      mode: "lines",
+      line: plotlyLineStyle(theme, i),
+    }
+  })
+}
+
 export default function LineChartGraph(props: LineChartGraphProps) {
+  const theme = useChartTheme()
+  const themeRef = useRef(theme)
+  themeRef.current = theme
+
   const refPlot = useRef<HTMLDivElement>(null)
   const refLayout = useRef<{
     width: number
@@ -57,16 +84,10 @@ export default function LineChartGraph(props: LineChartGraphProps) {
 
   useEffect(() => {
     if (refPlot.current) {
+      applyPlotlyTheme(refLayout.current, themeRef.current)
       Plotly.newPlot(
         refPlot.current,
-        plotDataRef.current.traces.map(y => {
-          return {
-            x: plotDataRef.current.x,
-            y: y,
-            type: "scatter",
-            mode: "lines",
-          }
-        }),
+        buildTraces(plotDataRef.current, themeRef.current),
         refLayout.current
       ).then(plotlyHTMLElement => {
         refPlotlyHTMLElement.current = plotlyHTMLElement
@@ -121,7 +142,8 @@ export default function LineChartGraph(props: LineChartGraphProps) {
     Plotly.relayout(refPlot.current, refLayout.current)
   }, [props.xMin, props.xMax, props.yMin, props.yMax])
 
-  useEffect(() => {
+  // Draws the latest plotData; at most once per animation frame.
+  const painter = useRafPainter(() => {
     if (refPlot.current == null) {
       return
     }
@@ -130,17 +152,25 @@ export default function LineChartGraph(props: LineChartGraphProps) {
 
     Plotly.react(
       refPlot.current,
-      plotDataRef.current.traces.map(y => {
-        return {
-          x: plotDataRef.current.x,
-          y: y,
-          type: "scatter",
-          mode: "lines",
-        }
-      }),
+      buildTraces(plotDataRef.current, themeRef.current),
       refLayout.current
     )
-  }, [props.plotData])
+  })
+
+  useEffect(() => {
+    painter.schedule()
+  }, [props.plotData, painter])
+
+  // Theme change: restyle layout + traces in place on the next frame.
+  const isFirstThemeRef = useRef(true)
+  useEffect(() => {
+    if (isFirstThemeRef.current) {
+      isFirstThemeRef.current = false
+      return
+    }
+    applyPlotlyTheme(refLayout.current, theme)
+    painter.schedule()
+  }, [theme, painter])
 
   return <div style={{...props.style, width: props.graphWidth, height: props.graphHeight, minWidth: props.graphWidth, minHeight: props.graphHeight}} ref={refPlot}></div>
 }

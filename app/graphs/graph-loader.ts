@@ -87,6 +87,8 @@ export const buildGraph = async (
         height?: number
         type?: string
         data?: Record<string, unknown>
+        // Display title of an editor node (defaults to its id)
+        label?: string
       }
     } = await (
       await fetch(
@@ -223,7 +225,7 @@ export const buildGraph = async (
           id: nodeName,
           data: {
             nodeData: settings.data,
-            label: nodeName,
+            label: settings.label ?? nodeName,
             graphEndpoint: graphEndpoint,
             editorModelUpdater,
           },

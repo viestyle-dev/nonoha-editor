@@ -13,8 +13,12 @@ import {
   alpha,
   Button,
   Divider,
+  FormControl,
   IconButton,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   TextField,
   Tooltip,
 } from "@mui/material"
@@ -35,11 +39,18 @@ import {
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
 import { FastHeatmapGraphHandle } from "@/src/components/fast-heatmap-graph"
-import { buildPortlandLut, HeatmapRaster } from "@/src/lib/heatmap-raster"
+import { HeatmapRaster } from "@/src/lib/heatmap-raster"
+import {
+  buildColormapLut,
+  COLORMAP_OPTIONS,
+  ColormapName,
+  resolveColormap,
+} from "@/src/lib/colormaps"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { useControlGates } from "@/src/hooks/use-control-gates"
+import { useRafPainter } from "@/src/hooks/use-raf-painter"
 import { ChartControlBar } from "@/src/components/chart-control-bar"
 import { ControlGateHandles } from "@/src/components/control-gate-handles"
 import { ControlModeToggle } from "@/src/components/control-mode-toggle"
@@ -72,6 +83,7 @@ const GraphWrapper = memo(
     yRange,
     zMin,
     zMax,
+    colormap,
     graphRef,
     viewportZoom = 1,
     onError,
@@ -85,6 +97,7 @@ const GraphWrapper = memo(
     yRange?: { min?: number; max?: number }
     zMin?: number
     zMax?: number
+    colormap: ColormapName
     graphRef: React.RefObject<FastHeatmapGraphHandle>
     viewportZoom?: number
     onError?: (error: string | undefined) => void
@@ -138,7 +151,7 @@ const GraphWrapper = memo(
     }
     const lutRef = useRef<Uint8ClampedArray | null>(null)
     if (!lutRef.current) {
-      lutRef.current = buildPortlandLut()
+      lutRef.current = buildColormapLut(colormap)
     }
 
     // z range used for the last full repaint. Incremental column painting
@@ -151,12 +164,31 @@ const GraphWrapper = memo(
     })
     const [yLabels, setYLabels] = useState<Float32Array | undefined>()
 
-    // Resolves the effective z range (settings override the measured range
-    // per bound) and repaints: everything when the range moved beyond the
-    // epsilon, only the dirty columns otherwise.
-    const paintDirty = useCallback((dirty: readonly number[]) => {
+    // Columns written since the last frame (1 = dirty), merged across
+    // batches so LUT painting and the React state update run once per frame.
+    const pendingColsRef = useRef(new Uint8Array(0))
+    const dirtyListRef = useRef<number[]>([])
+
+    // Once per animation frame: resolves the effective z range (settings
+    // override the measured range per bound) and repaints: everything when
+    // the range moved beyond the epsilon, only the dirty columns otherwise.
+    const framePainter = useRafPainter(() => {
       const raster = rasterRef.current!
       const lut = lutRef.current!
+
+      const pending = pendingColsRef.current
+      const dirty = dirtyListRef.current
+      dirty.length = 0
+      if (pending.length === raster.xLength) {
+        for (let c = 0; c < pending.length; c++) {
+          if (pending[c]) {
+            pending[c] = 0
+            dirty.push(c)
+          }
+        }
+      } else {
+        pending.fill(0)
+      }
 
       let effMin = zMinRef.current
       let effMax = zMaxRef.current
@@ -189,7 +221,23 @@ const GraphWrapper = memo(
         cursor: raster.cursor,
         z: lastPaintZRef.current,
       }))
-    }, [])
+    })
+
+    // Marks columns dirty (cheap, per batch); framePainter colours them.
+    const paintDirty = useCallback(
+      (dirty: readonly number[]) => {
+        const xLen = rasterRef.current!.xLength
+        let pending = pendingColsRef.current
+        if (pending.length !== xLen) {
+          pending = pendingColsRef.current = new Uint8Array(xLen)
+        }
+        for (let i = 0; i < dirty.length; i++) {
+          pending[dirty[i]] = 1
+        }
+        framePainter.schedule()
+      },
+      [framePainter]
+    )
 
     const onSeriesCallback = useCallback(
       (values: PortValue[]) => {
@@ -361,6 +409,21 @@ const GraphWrapper = memo(
       paintDirty([])
     }, [zMin, zMax, paintDirty])
 
+    // Colormap setting change: swap the LUT and repaint every column.
+    const isFirstColormapRef = useRef(true)
+    useEffect(() => {
+      if (isFirstColormapRef.current) {
+        isFirstColormapRef.current = false
+        return
+      }
+      lutRef.current = buildColormapLut(colormap)
+      lastPaintZRef.current = undefined
+      if (rasterRef.current!.yLength === 0) {
+        return
+      }
+      paintDirty([])
+    }, [colormap, paintDirty])
+
     return (
       <FastHeatmapGraph
         ref={graphRef}
@@ -372,6 +435,7 @@ const GraphWrapper = memo(
         graphHeight={graphHeight}
         yRange={yRange}
         zRange={paintState.z}
+        colormap={colormap}
         viewportZoom={viewportZoom}
       />
     )
@@ -385,6 +449,7 @@ export type FastHeatmapGraphNode = Node<{
   graphEndpoint: GraphEndpoint | undefined
   editorModelUpdater: EditorModelUpdater
   nodeData?: {
+    recordOnOpen?: boolean
     xLength?: number
     graphWidth?: number
     graphHeight?: number
@@ -392,6 +457,8 @@ export type FastHeatmapGraphNode = Node<{
     yMax?: number
     zMin?: number
     zMax?: number
+    // Absent in older graphs -> DEFAULT_COLORMAP (viridis).
+    colormap?: ColormapName
   }
 }>
 
@@ -406,6 +473,7 @@ export const FastHeatmapGraphNode = memo(
     const xLength = props.data.nodeData?.xLength ?? 500
     const graphWidth = props.data.nodeData?.graphWidth ?? 480
     const graphHeight = props.data.nodeData?.graphHeight ?? 320
+    const colormap = resolveColormap(props.data.nodeData?.colormap)
 
     // Y/Z ranges: undefined = auto (yLabels bounds / measured data range)
     const [yMin, setYMin] = useState(props.data.nodeData?.yMin ?? undefined)
@@ -460,7 +528,8 @@ export const FastHeatmapGraphNode = memo(
       [props.id, setNodes]
     )
 
-    const [isRecording, setIsRecording] = useState(false)
+    // recordOnOpen: start recording when the node opens (e.g. pinned monitors).
+    const [isRecording, setIsRecording] = useState(props.data.nodeData?.recordOnOpen === true)
 
     const [graphRevision, setGraphRevision] = useState(0)
 
@@ -617,6 +686,15 @@ export const FastHeatmapGraphNode = memo(
       props.id,
     ])
 
+    // Colormap applies immediately (no Apply needed).
+    const handleColormapChange = useCallback(
+      (value: ColormapName) => {
+        updateNodeData({ colormap: value })
+        editorModelUpdater.patchNodeData(props.id, { colormap: value })
+      },
+      [updateNodeData, editorModelUpdater, props.id]
+    )
+
     // Partial auto-range: either bound may be left unset.
     const yRange = useMemo(() => {
       if (yMin === undefined && yMax === undefined) {
@@ -703,6 +781,7 @@ export const FastHeatmapGraphNode = memo(
             yRange={yRange}
             zMin={zMin}
             zMax={zMax}
+            colormap={colormap}
             graphRef={graphRef}
             viewportZoom={viewportZoom}
             onError={setGraphError}
@@ -851,6 +930,22 @@ export const FastHeatmapGraphNode = memo(
                   css={css({ flexGrow: 1 })}
                 />
               </div>
+              <FormControl size="small" fullWidth>
+                <InputLabel>Colormap</InputLabel>
+                <Select
+                  value={colormap}
+                  label="Colormap"
+                  onChange={event =>
+                    handleColormapChange(event.target.value as ColormapName)
+                  }
+                >
+                  {COLORMAP_OPTIONS.map(option => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
               <Button variant="text" size="small" onClick={applySettings}>
                 Apply Settings
               </Button>

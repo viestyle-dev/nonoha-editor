@@ -1,6 +1,14 @@
 import Plotly, { TypedArray } from "plotly.js-dist-min"
 import { CSSProperties, useEffect, useRef } from "react"
 
+import { useChartTheme } from "@/src/hooks/use-chart-theme"
+import { useRafPainter } from "@/src/hooks/use-raf-painter"
+import {
+  applyPlotlyTheme,
+  ChartTheme,
+  plotlyLineStyle,
+} from "@/src/lib/chart-theme"
+
 // Log10軸のデフォルト目盛り値を取得してカスタムテキストを生成
 function generateLogTickSettings(min: number, max: number) {
   // Plotlyのデフォルト間隔に従った目盛り値を生成
@@ -64,13 +72,14 @@ function getPowerOf10Values(min: number, max: number): number[] {
   return values
 }
 
-// Log10軸用の黒実線shapesを生成
+// Log10軸用の10^n実線shapesを生成 (色はテーマのaxisLine)
 function generatePowerOf10GridLines(
   axisType: 'x' | 'y',
   min: number,
   max: number,
-  otherAxisMin?: number,
-  otherAxisMax?: number
+  otherAxisMin: number | undefined,
+  otherAxisMax: number | undefined,
+  color: string
 ) {
   const powerOf10Values = getPowerOf10Values(min, max)
   const shapes: Record<string, unknown>[] = []
@@ -86,7 +95,7 @@ function generatePowerOf10GridLines(
         y1: otherAxisMax !== undefined ? otherAxisMax : 1,
         yref: otherAxisMin !== undefined && otherAxisMax !== undefined ? 'y' : 'paper',
         line: {
-          color: 'black',
+          color,
           width: 1
         }
       })
@@ -100,7 +109,7 @@ function generatePowerOf10GridLines(
         x1: otherAxisMax !== undefined ? otherAxisMax : 1,
         xref: otherAxisMin !== undefined && otherAxisMax !== undefined ? 'x' : 'paper',
         line: {
-          color: 'black',
+          color,
           width: 1
         }
       })
@@ -128,7 +137,26 @@ export interface Log10LineChartGraphProps {
   yMax?: number
 }
 
+function buildTraces(
+  plotData: Log10LineChartPlotData,
+  theme: ChartTheme,
+): Plotly.Data[] {
+  return plotData.traces.map((y, i) => {
+    return {
+      x: plotData.x,
+      y: y,
+      type: "scatter",
+      mode: "lines",
+      line: plotlyLineStyle(theme, i),
+    }
+  })
+}
+
 export default function Log10LineChartGraph(props: Log10LineChartGraphProps) {
+  const theme = useChartTheme()
+  const themeRef = useRef(theme)
+  themeRef.current = theme
+
   const refPlot = useRef<HTMLDivElement>(null)
   const refLayout = useRef({
     width: props.graphWidth,
@@ -178,14 +206,14 @@ export default function Log10LineChartGraph(props: Log10LineChartGraphProps) {
       if (props.xLogScale && props.xMin !== undefined && props.xMax !== undefined) {
         const yMin = props.yLogScale && props.yMin !== undefined ? props.yMin : undefined
         const yMax = props.yLogScale && props.yMax !== undefined ? props.yMax : undefined
-        shapes.push(...generatePowerOf10GridLines('x', props.xMin, props.xMax, yMin, yMax))
+        shapes.push(...generatePowerOf10GridLines('x', props.xMin, props.xMax, yMin, yMax, theme.axisLine))
       }
 
       // Y軸のLog10で範囲指定がある場合
       if (props.yLogScale && props.yMin !== undefined && props.yMax !== undefined) {
         const xMin = props.xLogScale && props.xMin !== undefined ? props.xMin : undefined
         const xMax = props.xLogScale && props.xMax !== undefined ? props.xMax : undefined
-        shapes.push(...generatePowerOf10GridLines('y', props.yMin, props.yMax, xMin, xMax))
+        shapes.push(...generatePowerOf10GridLines('y', props.yMin, props.yMax, xMin, xMax, theme.axisLine))
       }
 
       return shapes
@@ -198,16 +226,10 @@ export default function Log10LineChartGraph(props: Log10LineChartGraphProps) {
 
   useEffect(() => {
     if (refPlot.current) {
+      applyPlotlyTheme(refLayout.current, themeRef.current)
       Plotly.newPlot(
         refPlot.current,
-        plotDataRef.current.traces.map(y => {
-          return {
-            x: plotDataRef.current.x,
-            y: y,
-            type: "scatter",
-            mode: "lines",
-          }
-        }),
+        buildTraces(plotDataRef.current, themeRef.current),
         refLayout.current
       ).then(plotlyHTMLElement => {
         refPlotlyHTMLElement.current = plotlyHTMLElement
@@ -311,17 +333,18 @@ export default function Log10LineChartGraph(props: Log10LineChartGraphProps) {
     const shapes: Record<string, unknown>[] = []
 
     // X軸のLog10で範囲指定がある場合
+    const lineColor = themeRef.current.axisLine
     if (props.xLogScale && props.xMin !== undefined && props.xMax !== undefined) {
       const yMin = props.yLogScale && props.yMin !== undefined ? props.yMin : undefined
       const yMax = props.yLogScale && props.yMax !== undefined ? props.yMax : undefined
-      shapes.push(...generatePowerOf10GridLines('x', props.xMin, props.xMax, yMin, yMax))
+      shapes.push(...generatePowerOf10GridLines('x', props.xMin, props.xMax, yMin, yMax, lineColor))
     }
 
     // Y軸のLog10で範囲指定がある場合
     if (props.yLogScale && props.yMin !== undefined && props.yMax !== undefined) {
       const xMin = props.xLogScale && props.xMin !== undefined ? props.xMin : undefined
       const xMax = props.xLogScale && props.xMax !== undefined ? props.xMax : undefined
-      shapes.push(...generatePowerOf10GridLines('y', props.yMin, props.yMax, xMin, xMax))
+      shapes.push(...generatePowerOf10GridLines('y', props.yMin, props.yMax, xMin, xMax, lineColor))
     }
 
     // shapesをlayoutに設定
@@ -331,7 +354,8 @@ export default function Log10LineChartGraph(props: Log10LineChartGraphProps) {
     Plotly.relayout(refPlot.current, refLayout.current)
   }, [props.xLogScale, props.yLogScale, props.xMin, props.xMax, props.yMin, props.yMax])
 
-  useEffect(() => {
+  // Draws the latest plotData; at most once per animation frame.
+  const painter = useRafPainter(() => {
     if (refPlot.current == null) {
       return
     }
@@ -340,17 +364,31 @@ export default function Log10LineChartGraph(props: Log10LineChartGraphProps) {
 
     Plotly.react(
       refPlot.current,
-      plotDataRef.current.traces.map(y => {
-        return {
-          x: plotDataRef.current.x,
-          y: y,
-          type: "scatter",
-          mode: "lines",
-        }
-      }),
+      buildTraces(plotDataRef.current, themeRef.current),
       refLayout.current
     )
-  }, [props.plotData])
+  })
+
+  useEffect(() => {
+    painter.schedule()
+  }, [props.plotData, painter])
+
+  // Theme change: restyle layout, decade lines and traces on the next frame.
+  const isFirstThemeRef = useRef(true)
+  useEffect(() => {
+    if (isFirstThemeRef.current) {
+      isFirstThemeRef.current = false
+      return
+    }
+    applyPlotlyTheme(refLayout.current, theme)
+    const shapes = (refLayout.current as Record<string, unknown>).shapes as
+      | { line?: Record<string, unknown> }[]
+      | undefined
+    shapes?.forEach(shape => {
+      shape.line = { ...shape.line, color: theme.axisLine }
+    })
+    painter.schedule()
+  }, [theme, painter])
 
   return <div style={{...props.style, width: props.graphWidth, height: props.graphHeight, minWidth: props.graphWidth, minHeight: props.graphHeight}} ref={refPlot}></div>
 }

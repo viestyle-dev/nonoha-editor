@@ -1,5 +1,5 @@
-import { Clear } from "@mui/icons-material"
-import { IconButton } from "@mui/material"
+import { Clear, Output } from "@mui/icons-material"
+import { IconButton, Paper, Tooltip } from "@mui/material"
 import {
   EdgeProps,
   useReactFlow,
@@ -21,6 +21,7 @@ import { useThemeStore } from "../stores/theme-store"
 import { useGraphSessionStore } from "../stores/graph-session-store"
 import { WAYPOINT_SIZE } from "../nodes/editor-nodes/waypoint-node"
 import { buildEdgePath, edgeMidpoint, findInsertionIndex, type Point } from "../lib/graph/edge-path"
+import { useInspector } from "../inspector/inspector-store"
 
 const WAYPOINT_HALF = WAYPOINT_SIZE / 2
 
@@ -64,6 +65,9 @@ export default function BasicNodeEdge({
   const [{ colors }] = useThemeStore()
   const isValid = (props.data as Record<string, unknown>)?.valid !== false
   const isHighlighted = (props.data as Record<string, unknown>)?.highlighted === true
+  // Engine node output -> display node: fed by the inspector (sampled), drawn dashed.
+  const endpoints = props.data as { source?: { type: string }; target?: { type: string } } | undefined
+  const isMonitor = endpoints?.source?.type === "node" && endpoints?.target?.type === "editor"
 
   const [flowColorsState] = useNodeFlowColorsStore()
   const [{ editorModelUpdater }] = useGraphSessionStore()
@@ -181,6 +185,17 @@ export default function BasicNodeEdge({
     deleteElements({ edges: [{ id }] })
   }
 
+  // Dashed (inspector) edge -> route it through a new $output port instead.
+  const inspector = useInspector()
+  const handlePromote = () => {
+    inspector?.promoteHandler?.({
+      source: props.source,
+      sourceHandle: props.sourceHandleId ?? null,
+      target: props.target,
+      targetHandle: props.targetHandleId ?? null,
+    })
+  }
+
   // --- Waypoint: add on double-click ---
   const handleEdgeDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -288,8 +303,9 @@ export default function BasicNodeEdge({
         d={edgePath}
         fill="none"
         stroke={isHighlighted ? colors.tertiary : `url(#gradient-${id})`}
-        strokeWidth={isHighlighted ? 5 : isValid ? 4 : 3}
-        strokeDasharray={isValid ? undefined : "8 4"}
+        strokeWidth={isHighlighted ? 5 : isMonitor ? 3 : isValid ? 4 : 3}
+        strokeDasharray={!isValid ? "8 4" : isMonitor ? "1 7" : undefined}
+        strokeLinecap={isMonitor ? "round" : undefined}
         opacity={1.0}
         onDoubleClick={handleEdgeDoubleClick}
       />
@@ -312,9 +328,18 @@ export default function BasicNodeEdge({
               zIndex: 1000,
             }}
           >
-            <IconButton size="small" onClick={handleEdgeDelete}>
-              <Clear />
-            </IconButton>
+            <Paper elevation={2} style={{ display: "flex", borderRadius: 16, background: colors.surfaceContainerHigh }}>
+              {isMonitor && inspector?.promoteHandler && (
+                <Tooltip title="Make output port: every value, also available to apps">
+                  <IconButton size="small" onClick={handlePromote} aria-label="Make output port">
+                    <Output fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              )}
+              <IconButton size="small" onClick={handleEdgeDelete} aria-label="Delete edge">
+                <Clear fontSize="small" />
+              </IconButton>
+            </Paper>
           </div>
         </EdgeLabelRenderer>
       )}

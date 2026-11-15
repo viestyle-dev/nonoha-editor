@@ -8,12 +8,27 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from "react"
 import uPlot from "uplot"
 import "uplot/dist/uPlot.min.css"
 import { Home, ZoomIn, OpenWith } from "@mui/icons-material"
+
+import { useChartTheme } from "@/src/hooks/use-chart-theme"
+import { useRafPainter } from "@/src/hooks/use-raf-painter"
+import { ChartTheme, traceColor } from "@/src/lib/chart-theme"
+import { seriesDash } from "@/src/lib/chart-palette"
+import {
+  drawWriteHead,
+  fillPlotArea,
+  syncLegendMarkers,
+  themedAxis,
+  themedLegend,
+  toolbarIconStyle,
+  uplotThemeStyles,
+} from "@/src/lib/uplot-theme"
 
 type InteractionMode = "zoom" | "pan"
 
@@ -35,6 +50,7 @@ export interface FastTimeSeriesGraphProps {
   graphWidth: number
   graphHeight: number
   yRange?: { min?: number; max?: number }
+  /** Overrides the theme's categorical palette (slot order). */
   traceColors?: string[]
   /** ReactFlow viewport zoom factor for correcting mouse coordinates */
   viewportZoom?: number
@@ -44,38 +60,20 @@ export interface FastTimeSeriesGraphHandle {
   resetScale: () => void
 }
 
-// Plotly.js default color palette
-const PLOTLY_COLORS = [
-  "#1f77b4", // blue
-  "#ff7f0e", // orange
-  "#2ca02c", // green
-  "#d62728", // red
-  "#9467bd", // purple
-  "#8c564b", // brown
-  "#e377c2", // pink
-  "#7f7f7f", // gray
-  "#bcbd22", // olive
-  "#17becf", // cyan
-]
-
 // Toolbar component (memoized to prevent re-renders during graph updates)
 const GraphToolbar = memo(
   ({
     onResetAxis,
     mode,
     onModeChange,
+    theme,
   }: {
     onResetAxis: () => void
     mode: InteractionMode
     onModeChange: (mode: InteractionMode) => void
+    theme: ChartTheme
   }) => {
-    const iconStyle = (isActive: boolean) =>
-      css({
-        fontSize: 18,
-        color: isActive ? "#1976d2" : "#666",
-        cursor: "pointer",
-        "&:hover": { color: isActive ? "#1976d2" : "#333" },
-      })
+    const iconStyle = (isActive: boolean) => toolbarIconStyle(theme, isActive)
 
     return (
       <div
@@ -87,12 +85,7 @@ const GraphToolbar = memo(
         })}
       >
         <Home
-          css={css({
-            fontSize: 18,
-            color: "#666",
-            cursor: "pointer",
-            "&:hover": { color: "#333" },
-          })}
+          css={iconStyle(false)}
           onClick={onResetAxis}
           titleAccess="Reset Axis"
         />
@@ -112,6 +105,9 @@ const GraphToolbar = memo(
 )
 
 GraphToolbar.displayName = "GraphToolbar"
+
+// Static styles hoisted out of render (the chart re-renders per data update).
+const ROOT_STYLE = css({ position: "relative" })
 
 /**
  * Compute Y scale min/max from visible series data.
@@ -182,7 +178,18 @@ const FastTimeSeriesGraph = forwardRef<
   const viewportZoomRef = useRef(props.viewportZoom ?? 1)
   viewportZoomRef.current = props.viewportZoom ?? 1
 
-  const traceColors = props.traceColors ?? PLOTLY_COLORS
+  // Theme lives in a ref: uPlot reads colours through functions on every
+  // draw, so a theme change restyles in place (see the theme effect below).
+  const theme = useChartTheme()
+  const themeRef = useRef(theme)
+  themeRef.current = theme
+
+  // Stroke colour of uPlot series `seriesIdx` (1-based; 0 is x).
+  const strokeFor = useCallback(
+    (seriesIdx: number) =>
+      traceColor(themeRef.current, seriesIdx - 1, propsRef.current.traceColors),
+    [],
+  )
 
   // Convert to uPlot data format [xValues, trace1, trace2, ...]
   const buildData = useCallback(
@@ -196,39 +203,26 @@ const FastTimeSeriesGraph = forwardRef<
   const buildSeries = useCallback(
     (traceCount: number): uPlot.Series[] => {
       const series: uPlot.Series[] = [{}] // Empty entry for x-axis
+      const paletteLength =
+        propsRef.current.traceColors?.length || themeRef.current.series.length
 
       for (let i = 0; i < traceCount; i++) {
         series.push({
-          stroke: traceColors[i % traceColors.length],
-          width: 1,
+          stroke: (_u: uPlot, seriesIdx: number) => strokeFor(seriesIdx),
+          width: 1.5,
+          dash: seriesDash(i, paletteLength),
           label: `trace ${i}`,
         })
       }
 
       return series
     },
-    [traceColors],
+    [strokeFor],
   )
 
   // Cursor line drawing hook
   const drawCursorLine = useCallback((u: uPlot) => {
-    const ctx = u.ctx
-    const cursorPos = cursorPositionRef.current
-    const cursorX = u.valToPos(cursorPos, "x", true)
-
-    // Don't draw if outside graph area
-    if (cursorX < u.bbox.left || cursorX > u.bbox.left + u.bbox.width) {
-      return
-    }
-
-    ctx.save()
-    ctx.strokeStyle = "grey"
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.moveTo(cursorX, u.bbox.top)
-    ctx.lineTo(cursorX, u.bbox.top + u.bbox.height)
-    ctx.stroke()
-    ctx.restore()
+    drawWriteHead(u, cursorPositionRef.current, themeRef.current.cursor)
   }, [])
 
   // Reset scale function
@@ -431,9 +425,7 @@ const FastTimeSeriesGraph = forwardRef<
         move: cursorMove,
         bind: cursorBind(),
       },
-      legend: {
-        show: true,
-      },
+      legend: themedLegend(strokeFor),
       scales: {
         x: {
           time: false,
@@ -465,26 +457,18 @@ const FastTimeSeriesGraph = forwardRef<
         },
       },
       axes: [
-        {
-          show: true,
-          stroke: "#888",
-          grid: { stroke: "rgba(136, 136, 136, 0.3)", width: 1 },
-          ticks: { stroke: "#888", width: 1 },
-        },
-        {
-          show: true,
-          stroke: "#888",
-          grid: { stroke: "rgba(136, 136, 136, 0.3)", width: 1 },
-          ticks: { stroke: "#888", width: 1 },
+        themedAxis(themeRef),
+        themedAxis(themeRef, {
           size: (self: uPlot, values: string[]) => {
             if (!values || values.length === 0) return 50
             const maxLen = Math.max(...values.map(v => v.length))
             return Math.max(50, maxLen * 8 + 12)
           },
-        },
+        }),
       ],
       series: buildSeries(traceCount),
       hooks: {
+        drawClear: [fillPlotArea(themeRef)],
         draw: [drawCursorLine],
         setSeries: [
           (self: uPlot) => {
@@ -498,7 +482,7 @@ const FastTimeSeriesGraph = forwardRef<
         ],
       },
     }),
-    [buildSeries, cursorBind, cursorMove, drawCursorLine],
+    [buildSeries, cursorBind, cursorMove, drawCursorLine, strokeFor],
   )
 
   // Initialization
@@ -581,12 +565,15 @@ const FastTimeSeriesGraph = forwardRef<
     uplotRef.current = new uPlot(opts, data, container)
   }, [props.yRange, buildData, buildOptions])
 
-  // Data update (directly manipulate uPlot - no React re-render)
-  useEffect(() => {
+  // Paints the latest plotData (directly manipulates uPlot - no React
+  // re-render). Runs at most once per animation frame, however many data
+  // updates arrived since the last frame.
+  const paint = useCallback(() => {
     if (!uplotRef.current) return
 
+    const p = propsRef.current
     const currentTraceCount = uplotRef.current.series.length - 1 // Exclude x-axis
-    const newTraceCount = props.plotData.traces.length
+    const newTraceCount = p.plotData.traces.length
 
     // Rebuild uPlot if trace count changes
     if (currentTraceCount !== newTraceCount && newTraceCount > 0) {
@@ -596,25 +583,26 @@ const FastTimeSeriesGraph = forwardRef<
       // Destroy existing uPlot
       uplotRef.current.destroy()
 
-      const data = buildData(props.plotData)
+      cursorPositionRef.current = p.plotData.cursorPosition
+      const data = buildData(p.plotData)
       const opts = buildOptions(
         newTraceCount,
-        props.graphWidth,
-        props.graphHeight,
-        props.yRange,
+        p.graphWidth,
+        p.graphHeight,
+        p.yRange,
       )
 
       uplotRef.current = new uPlot(opts, data, container)
     } else if (newTraceCount > 0) {
       // Efficiently update data only when trace count is the same
-      cursorPositionRef.current = props.plotData.cursorPosition
-      const data = buildData(props.plotData)
+      cursorPositionRef.current = p.plotData.cursorPosition
+      const data = buildData(p.plotData)
       // setData(data, false) preserves scales but skips redraw
       uplotRef.current.setData(data, false)
 
       // Recalculate Y scale from visible series (unless user has custom view)
       if (!isCustomViewRef.current) {
-        const yScale = computeYScale(uplotRef.current, propsRef.current.yRange)
+        const yScale = computeYScale(uplotRef.current, p.yRange)
         if (yScale) {
           uplotRef.current.setScale("y", yScale)
         }
@@ -623,53 +611,39 @@ const FastTimeSeriesGraph = forwardRef<
       // Explicitly call redraw() to update the display
       uplotRef.current.redraw()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.plotData])
+  }, [buildData, buildOptions])
+
+  const painter = useRafPainter(paint)
+
+  // Data update: only schedule; the painter draws on the next frame.
+  useEffect(() => {
+    painter.schedule()
+  }, [props.plotData, painter])
+
+  // Theme change: restyle in place (strokes resolve through themeRef).
+  const isFirstThemeRef = useRef(true)
+  useEffect(() => {
+    if (isFirstThemeRef.current) {
+      isFirstThemeRef.current = false
+      return
+    }
+    const u = uplotRef.current
+    if (!u) return
+    syncLegendMarkers(u, strokeFor)
+    u.redraw(false)
+  }, [theme, strokeFor])
+
+  const containerStyles = useMemo(() => uplotThemeStyles(theme), [theme])
 
   return (
-    <div
-      css={css({
-        position: "relative",
-        // width: props.graphWidth,
-        // height: props.graphHeight,
-        background: "#fff",
-      })}
-    >
+    <div css={ROOT_STYLE}>
       <GraphToolbar
         onResetAxis={resetScale}
         mode={interactionMode}
         onModeChange={setInteractionMode}
+        theme={theme}
       />
-      <div
-        ref={containerRef}
-        style={props.style}
-        css={css`
-          /* Plotly-like styles */
-          .uplot {
-            font-family: inherit;
-            background: #fff;
-          }
-          .u-legend {
-            font-size: 11px;
-            background: transparent;
-            text-align: left;
-            padding: 4px;
-          }
-          .u-series {
-            padding: 1px 4px;
-          }
-          .u-marker {
-            width: 12px;
-            height: 2px;
-          }
-          .u-label {
-            color: #444;
-          }
-          .u-value {
-            color: #666;
-          }
-        `}
-      />
+      <div ref={containerRef} style={props.style} css={containerStyles} />
     </div>
   )
 })

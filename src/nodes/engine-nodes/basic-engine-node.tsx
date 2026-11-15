@@ -13,7 +13,8 @@ import {
 } from "@mui/material"
 import { css } from "@emotion/react"
 
-import { NodeHandleLeft, NodeHandleRight } from "@/src/components/node-handle"
+import { NodeHandleLeft } from "@/src/components/node-handle"
+import { ActivityOutputHandle } from "@/src/inspector/activity-output-handle"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { hexFromArgb } from "@material/material-color-utilities"
 import {
@@ -354,13 +355,12 @@ export const BasicEngineNode = memo((props: NodeProps<BasicEngineNode>) => {
             alignItems: "flex-end",
           })}
         >
-          <Tooltip title={<span style={{ whiteSpace: "pre-line" }}>{tooltipContent}</span>} placement="left">
-            <NodeHandleRight
-              id={output.name}
-              label={output.name}
-              handleColor={firstDataTypeColor}
-            />
-          </Tooltip>
+          <ActivityOutputHandle
+            nodeId={props.id}
+            port={output.name}
+            handleColor={firstDataTypeColor}
+            tooltip={tooltipContent}
+          />
           {output.values.length > 1 &&
             output.values.map((value, index) => {
               const valueTypeColor = hexFromArgb(
@@ -416,6 +416,7 @@ export const BasicEngineNode = memo((props: NodeProps<BasicEngineNode>) => {
     flowColorsState.pallet,
     colors.onSurfaceVariant,
     catalogEntry,
+    props.id,
   ])
 
   const [properties, setProperties] = useState(props.data.nodeData.properties)

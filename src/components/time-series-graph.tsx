@@ -1,6 +1,14 @@
 import Plotly from "plotly.js-dist-min"
 import { CSSProperties, useEffect, useRef } from "react"
 
+import { useChartTheme } from "@/src/hooks/use-chart-theme"
+import { useRafPainter } from "@/src/hooks/use-raf-painter"
+import {
+  applyPlotlyTheme,
+  ChartTheme,
+  plotlyLineStyle,
+} from "@/src/lib/chart-theme"
+
 export interface TimeSeriesPlotData {
   x: number[]
   traces: number[][]
@@ -15,7 +23,26 @@ export interface TimeSeriesGraphProps {
   yRange?: { min?: number; max?: number }
 }
 
+function buildTraces(
+  plotData: TimeSeriesPlotData,
+  theme: ChartTheme,
+): Plotly.Data[] {
+  return plotData.traces.map((y, i) => {
+    return {
+      x: plotData.x,
+      y: y,
+      type: "scatter",
+      mode: "lines",
+      line: plotlyLineStyle(theme, i),
+    }
+  })
+}
+
 export default function TimeSeriesGraph(props: TimeSeriesGraphProps) {
+  const theme = useChartTheme()
+  const themeRef = useRef(theme)
+  themeRef.current = theme
+
   const refPlot = useRef<HTMLDivElement>(null)
   const refLayout = useRef<{
     width: number
@@ -47,8 +74,8 @@ export default function TimeSeriesGraph(props: TimeSeriesGraphProps) {
         y1: 1,
         yref: "paper",
         line: {
-          color: "grey",
-          width: 2,
+          color: theme.cursor,
+          width: 1.5,
         },
       },
     ] as Plotly.Shape[],
@@ -58,18 +85,21 @@ export default function TimeSeriesGraph(props: TimeSeriesGraphProps) {
 
   const refPlotlyHTMLElement = useRef<Plotly.PlotlyHTMLElement | null>(null)
 
+  // Colours/fonts from the theme, merged into the mutable layout.
+  const applyTheme = (t: ChartTheme) => {
+    applyPlotlyTheme(refLayout.current, t)
+    refLayout.current.shapes[0].line = {
+      ...refLayout.current.shapes[0].line,
+      color: t.cursor,
+    }
+  }
+
   useEffect(() => {
     if (refPlot.current) {
+      applyTheme(themeRef.current)
       Plotly.newPlot(
         refPlot.current,
-        plotDataRef.current.traces.map(y => {
-          return {
-            x: plotDataRef.current.x,
-            y: y,
-            type: "scatter",
-            mode: "lines",
-          }
-        }),
+        buildTraces(plotDataRef.current, themeRef.current),
         refLayout.current
       ).then(plotlyHTMLElement => {
         refPlotlyHTMLElement.current = plotlyHTMLElement
@@ -77,6 +107,7 @@ export default function TimeSeriesGraph(props: TimeSeriesGraphProps) {
         Plotly.relayout(refPlot.current!, refLayout.current)
       })
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -110,7 +141,8 @@ export default function TimeSeriesGraph(props: TimeSeriesGraphProps) {
     Plotly.relayout(refPlot.current, refLayout.current)
   }, [props.graphWidth, props.graphHeight, props.yRange])
 
-  useEffect(() => {
+  // Draws the latest plotData; at most once per animation frame.
+  const painter = useRafPainter(() => {
     if (refPlot.current == null) {
       return
     }
@@ -121,17 +153,26 @@ export default function TimeSeriesGraph(props: TimeSeriesGraphProps) {
 
     Plotly.react(
       refPlot.current,
-      plotDataRef.current.traces.map(y => {
-        return {
-          x: plotDataRef.current.x,
-          y: y,
-          type: "scatter",
-          mode: "lines",
-        }
-      }),
+      buildTraces(plotDataRef.current, themeRef.current),
       refLayout.current
     )
-  }, [props.plotData])
+  })
+
+  useEffect(() => {
+    painter.schedule()
+  }, [props.plotData, painter])
+
+  // Theme change: restyle layout + traces in place on the next frame.
+  const isFirstThemeRef = useRef(true)
+  useEffect(() => {
+    if (isFirstThemeRef.current) {
+      isFirstThemeRef.current = false
+      return
+    }
+    applyTheme(theme)
+    painter.schedule()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [theme, painter])
 
   return <div style={props.style} ref={refPlot}></div>
 }

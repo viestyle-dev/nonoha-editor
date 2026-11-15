@@ -42,6 +42,11 @@ import { useControlGates } from "@/src/hooks/use-control-gates"
 import { ChartControlBar } from "@/src/components/chart-control-bar"
 import { ControlGateHandles } from "@/src/components/control-gate-handles"
 import { ControlModeToggle } from "@/src/components/control-mode-toggle"
+import {
+  COLORMAP_OPTIONS,
+  ColormapName,
+  resolveColormap,
+} from "@/src/lib/colormaps"
 
 const HeatmapGraph = dynamic(() => import("@/src/components/heatmap-graph"), {
   ssr: false,
@@ -58,6 +63,7 @@ const GraphWrapper = memo(
     graphHeight = 320,
     zMin,
     zMax,
+    colormap,
   }: {
     graphEndpoint: GraphEndpoint | undefined
     recording: boolean
@@ -68,6 +74,7 @@ const GraphWrapper = memo(
     graphHeight?: number
     zMin?: number
     zMax?: number
+    colormap?: ColormapName
   }) => {
     const refRecording = useRef(recording)
     refRecording.current = recording
@@ -268,6 +275,7 @@ const GraphWrapper = memo(
           type={plotType}
           zMin={zMin}
           zMax={zMax}
+          colormap={colormap}
         />
         <div
           css={{
@@ -290,12 +298,15 @@ export type HeatmapGraphNode = Node<{
   graphEndpoint: GraphEndpoint | undefined
   editorModelUpdater: EditorModelUpdater
   nodeData?: {
+    recordOnOpen?: boolean
     graphWidth?: number
     graphHeight?: number
     xLength?: number
     plotType?: "heatmap" | "surface"
     zMin?: number
     zMax?: number
+    // Absent in older graphs -> DEFAULT_COLORMAP (viridis).
+    colormap?: ColormapName
   }
 }>
 
@@ -356,7 +367,8 @@ export const HeatmapGraphNode = memo((props: NodeProps<HeatmapGraphNode>) => {
     [props.id, setNodes]
   )
 
-  const [isRecording, setIsRecording] = useState(false)
+  // recordOnOpen: start recording when the node opens (e.g. pinned monitors).
+  const [isRecording, setIsRecording] = useState(props.data.nodeData?.recordOnOpen === true)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [graphRevision, setGraphRevision] = useState(0)
 
@@ -452,6 +464,12 @@ export const HeatmapGraphNode = memo((props: NodeProps<HeatmapGraphNode>) => {
   const handlePlotTypeChange = (value: "heatmap" | "surface") => {
     updateNodeData({ plotType: value })
     editorModelUpdater.patchNodeData(props.id, { plotType: value })
+  }
+
+  const colormap = resolveColormap(props.data.nodeData?.colormap)
+  const handleColormapChange = (value: ColormapName) => {
+    updateNodeData({ colormap: value })
+    editorModelUpdater.patchNodeData(props.id, { colormap: value })
   }
 
   return (
@@ -569,6 +587,7 @@ export const HeatmapGraphNode = memo((props: NodeProps<HeatmapGraphNode>) => {
           graphHeight={graphHeight}
           zMin={zMin}
           zMax={zMax}
+          colormap={colormap}
         />
         <Button
           css={css({
@@ -654,6 +673,22 @@ export const HeatmapGraphNode = memo((props: NodeProps<HeatmapGraphNode>) => {
               >
                 <MenuItem value="heatmap">Heatmap</MenuItem>
                 <MenuItem value="surface">Surface</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl size="small">
+              <InputLabel>Colormap</InputLabel>
+              <Select
+                value={colormap}
+                label="Colormap"
+                onChange={event => {
+                  handleColormapChange(event.target.value as ColormapName)
+                }}
+              >
+                {COLORMAP_OPTIONS.map(option => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
             <div

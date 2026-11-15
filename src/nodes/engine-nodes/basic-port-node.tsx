@@ -1,6 +1,7 @@
 import { alpha, Paper, Tooltip, Typography } from "@mui/material"
-import { NodeProps, Node, Handle, Position } from "@xyflow/react"
-import { memo, useState } from "react"
+import { NodeProps, Node, Handle, Position, useStore } from "@xyflow/react"
+import { memo, MouseEvent, useCallback, useMemo, useState } from "react"
+import type { InspectorPortRef } from "nonoha-client-js"
 import { css } from "@emotion/react"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { hexFromArgb } from "@material/material-color-utilities"
@@ -11,6 +12,10 @@ import {
   useNodeFlowColorsStore,
 } from "@/src/stores/node-flow-colors-store"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
+import { flowingGlow } from "@/src/components/node-handle"
+import { useInspectorState, usePortActivity } from "@/src/inspector/inspector-store"
+import { formatHz, isFlowing, LiveLines, zoomedInSelector } from "@/src/inspector/activity-output-handle"
+import { PeekPopover } from "@/src/inspector/peek-popover"
 
 export type BasicPortNode = Node<{
   label: string
@@ -42,19 +47,42 @@ export const BasicPortNode = memo((props: NodeProps<BasicPortNode>) => {
   const nodeId = props.id
   const nodeType = getNodeType(nodeId)
 
+  // Inspector: the graph's own port (node "") breathes while values flow;
+  // the type label shows live statistics and opens a peek on click.
+  const { supported, enabled } = useInspectorState()
+  const live = Boolean(supported && enabled) && (nodeType === "input" || nodeType === "output")
+  const portName = props.data.port.name
+  const portRef = useMemo<InspectorPortRef>(
+    () => ({ node: "", dir: nodeType === "input" ? "in" : "out", port: portName }),
+    [nodeType, portName],
+  )
+  const entry = usePortActivity(live ? portRef : null)
+  const flowing = live && isFlowing(entry)
+  const zoomedIn = useStore(zoomedInSelector)
+  const [peekAnchor, setPeekAnchor] = useState<HTMLElement | null>(null)
+  const openPeek = useCallback((event: MouseEvent<HTMLElement>) => {
+    event.stopPropagation()
+    setPeekAnchor(event.currentTarget)
+  }, [])
+  const closePeek = useCallback(() => setPeekAnchor(null), [])
+
   return (
     <Paper
-      css={css({
-        borderRadius: 32,
-        width: 64,
-        height: 64,
-        position: "relative",
-        background: colors.surfaceContainerHighest,
-        color: colors.onSurface,
-        outlineOffset: "4px",
-      })}
+      css={[
+        css({
+          borderRadius: 32,
+          width: 64,
+          height: 64,
+          position: "relative",
+          background: colors.surfaceContainerHighest,
+          color: colors.onSurface,
+          outlineOffset: "4px",
+        }),
+        flowing && flowingGlow,
+      ]}
       style={{
         outline: props.selected ? `1px solid ${colors.tertiary}` : "none",
+        ...(flowing ? ({ "--port-glow": alpha(dataTypeColor, 0.45) } as Record<string, string>) : null),
       }}
     >
       <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />
@@ -92,13 +120,25 @@ export const BasicPortNode = memo((props: NodeProps<BasicPortNode>) => {
           maxWidth: "160px",
         })}
       >
-        <Tooltip title={`[${valuesString}]`}>
+        <Tooltip
+          title={
+            <span style={{ whiteSpace: "pre-line" }}>
+              {`[${valuesString}]`}
+              {live && entry && <LiveLines entry={entry} />}
+              {live && "\nClick to peek"}
+            </span>
+          }
+          disableInteractive
+        >
           <Typography
+            className={live ? "nodrag" : undefined}
+            onClick={live ? openPeek : undefined}
             css={css({
               color: colors.onSurfaceVariant,
               fontSize: "inherit",
               overflow: "hidden",
               textOverflow: "ellipsis",
+              cursor: live ? "pointer" : undefined,
             })}
           >
             [{valuesString}]
@@ -129,6 +169,13 @@ export const BasicPortNode = memo((props: NodeProps<BasicPortNode>) => {
           {nodeType == "input" && "IN"}
           {nodeType == "output" && "OUT"}
         </Typography>
+        {flowing && zoomedIn && (
+          <Typography
+            css={css({ fontSize: 10, lineHeight: "12px", color: colors.onSurfaceVariant, fontVariantNumeric: "tabular-nums" })}
+          >
+            {formatHz(entry!.hz)} Hz
+          </Typography>
+        )}
 
         <Handle
           style={{
@@ -149,6 +196,7 @@ export const BasicPortNode = memo((props: NodeProps<BasicPortNode>) => {
           position={Position.Right}
         />
       </div>
+      {peekAnchor && <PeekPopover anchorEl={peekAnchor} portRef={portRef} onClose={closePeek} />}
     </Paper>
   )
 })

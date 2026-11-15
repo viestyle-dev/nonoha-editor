@@ -4,8 +4,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Node,
   NodeProps,
-  useHandleConnections,
-  useNodesData,
   useReactFlow,
 } from "@xyflow/react"
 import {
@@ -25,11 +23,11 @@ import { enqueueSnackbar } from "notistack"
 import { NodeHandleLeft } from "@/src/components/node-handle"
 import {
   GraphEndpoint,
-  PortData,
   PortDataType,
+  PortValue,
 } from "nonoha-client-js"
+import { useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
-import { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
 import { TimeSeriesPlotData } from "@/src/components/time-series-graph"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { EditableTypography } from "@/src/components/editable-typography"
@@ -65,15 +63,6 @@ const GraphWrapper = memo(
 
     const refXLength = useRef(xLength)
     refXLength.current = xLength
-
-    // ---
-    const seriesConns = useHandleConnections({ type: "target", id: "series" })
-    const seriesSourcesData = useNodesData<BasicPortNode>(
-      seriesConns[0]?.source
-    )
-    const seriesSourcesDataRef = useRef(seriesSourcesData)
-    seriesSourcesDataRef.current = seriesSourcesData
-    // ---
 
     const [{ colors }] = useThemeStore()
 
@@ -122,21 +111,16 @@ const GraphWrapper = memo(
       clearPlot()
     }, [revision])
 
-    useEffect(() => {
-      if (!graphEndpoint) {
-        return
-      }
-      const onOutputCallback = (output: PortData) => {
-        if (seriesSourcesDataRef.current?.data.port.name !== output.portName) {
-          return
-        }
+    // Solid edge ($output port: every value) or dashed edge (engine node:
+    // rows since the last inspector sample).
+    useEditorInput(graphEndpoint, "series", (values: PortValue[]) => {
         if (!refRecording.current) {
           return
         }
 
         // 2D配列データの場合（高速化された処理）
-        if (output.values.length === 1 && output.values[0].shape.length === 2) {
-          const value = output.values[0]
+        if (values.length === 1 && values[0].shape.length === 2) {
+          const value = values[0]
           const [rows, cols] = value.shape
 
           // データタイプチェックを先に行う（ループ外で1回のみ）
@@ -179,7 +163,7 @@ const GraphWrapper = memo(
           }
         } else {
           // 1D配列データの場合
-          const valueCount = output.values.length
+          const valueCount = values.length
 
           // 案1: refSeriesListを再利用（サイズ変更時のみ再確保）
           if (refSeriesList.current.length !== valueCount) {
@@ -187,7 +171,7 @@ const GraphWrapper = memo(
           }
 
           for (let i = 0; i < valueCount; i++) {
-            const value = output.values[i]
+            const value = values[i]
 
             if (value.shape.length !== 1) {
               setErrorMessage(`Data shape must be 1D. (index: ${i})`)
@@ -289,14 +273,7 @@ const GraphWrapper = memo(
           traces: traces,
           cursorPosition: tailCursorPosition,
         }))
-      }
-
-      graphEndpoint.addOutputCallback(onOutputCallback)
-
-      return () => {
-        graphEndpoint.removeOutputCallback(onOutputCallback)
-      }
-    }, [graphEndpoint])
+    })
 
     return (
       <div>

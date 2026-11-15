@@ -1,6 +1,10 @@
 import Plotly, { Layout } from "plotly.js-dist-min"
 import { useEffect, useRef } from "react"
 
+import { useChartTheme } from "@/src/hooks/use-chart-theme"
+import { useRafPainter } from "@/src/hooks/use-raf-painter"
+import { applyPlotlyTheme } from "@/src/lib/chart-theme"
+
 export interface ScatterPlotData {
   traces: {
     x: number[]
@@ -25,6 +29,10 @@ export interface ScatterPlotProps {
 }
 
 export default function ScatterPlot(props: ScatterPlotProps) {
+  const theme = useChartTheme()
+  const themeRef = useRef(theme)
+  themeRef.current = theme
+
   const refPlot = useRef<HTMLDivElement>(null)
   const refLayout = useRef({
     width: props.layout.width,
@@ -66,13 +74,15 @@ export default function ScatterPlot(props: ScatterPlotProps) {
   const refPlotData = useRef(props.plotData)
   refPlotData.current = props.plotData
 
-  const refTestInit = useRef(false)
-
   useEffect(() => {
     if (refPlot.current == null) {
       return
     }
 
+    applyPlotlyTheme(refLayout.current, themeRef.current, {
+      cartesian: false,
+      scene: true,
+    })
     Plotly.newPlot(
       refPlot.current,
       refPlotData.current.traces.map(trace => {
@@ -89,66 +99,20 @@ export default function ScatterPlot(props: ScatterPlotProps) {
       refLayout.current
     ).then(plotlyHTMLElement => {
       refPlotlyHTMLElement.current = plotlyHTMLElement
-
-      // relayoutイベントリスナーを追加してカメラ状態を保存
-      plotlyHTMLElement.on("plotly_relayout", eventData => {
-        console.log(eventData)
-      })
+      // Data that arrived before the plot was ready.
+      painter.schedule()
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  useEffect(() => {
+  // Draws the latest plotData; at most once per animation frame.
+  const painter = useRafPainter(() => {
     if (refPlotlyHTMLElement.current == null || refPlot.current == null) {
       return
     }
 
     refLayout.current.datarevision =
       (refLayout.current.datarevision as number) + 1
-
-    // console.log(refLayout.current)
-    // refLayout.current.scene.aspectmode = "manual"
-
-    // if (!refTestInit.current) {
-    //   // エラー時は全体を再描画
-    //   Plotly.react(
-    //     refPlot.current,
-    //     refPlotData.current.traces.map(trace => ({
-    //       x: trace.x,
-    //       y: trace.y,
-    //       z: trace.z,
-    //       type: "scatter3d",
-    //       mode: "lines+markers",
-    //       marker: {
-    //         opacity: trace.opacities,
-    //       },
-    //     })),
-    //     refLayout.current
-    //   )
-    //   return
-    // }
-
-    // refTestInit.current = true
-    // // 各トレースを個別に更新
-    // refPlotData.current.traces.forEach((trace, i) => {
-    //   // 各トレース用の更新オブジェクトを新たに作成
-    //   const updateForThisTrace: any = {
-    //     x: [trace.x],
-    //     y: [trace.y],
-    //   }
-
-    //   // zが存在する場合のみ追加
-    //   if (trace.z && trace.z.length > 0) {
-    //     updateForThisTrace.z = [trace.z]
-    //   }
-
-    //   // opacitiesが存在する場合のみ追加
-    //   if (trace.opacities && trace.opacities.length > 0) {
-    //     updateForThisTrace["marker.opacity"] = [trace.opacities]
-    //   }
-
-    //   // このトレースのみを更新
-    //   Plotly.restyle(refPlot.current, updateForThisTrace, [i])
-    // })
 
     Plotly.react(
       refPlot.current,
@@ -169,7 +133,21 @@ export default function ScatterPlot(props: ScatterPlotProps) {
       }),
       refLayout.current
     )
-  }, [props.plotData])
+  })
+
+  useEffect(() => {
+    painter.schedule()
+  }, [props.plotData, painter])
+
+  const isFirstThemeRef = useRef(true)
+  useEffect(() => {
+    if (isFirstThemeRef.current) {
+      isFirstThemeRef.current = false
+      return
+    }
+    applyPlotlyTheme(refLayout.current, theme, { cartesian: false, scene: true })
+    painter.schedule()
+  }, [theme, painter])
 
   return <div ref={refPlot} className={props.className} />
 }
