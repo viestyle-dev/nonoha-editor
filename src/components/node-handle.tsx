@@ -47,18 +47,32 @@ export const NodeHandleLeft = forwardRef<HTMLDivElement, NodeHandleLeftProps>(
   }
 )
 
-// Soft ring that breathes while values flow through the port.
+// Soft ring that breathes while values flow through the port. The ring is a
+// pseudo-element whose opacity animates: the compositor runs opacity (and
+// transform) animations without the main thread. Animating box-shadow
+// recalculated styles and repainted every flowing port on every frame (with
+// a busy graph open, half of Chrome's CPU).
 const breathe = keyframes`
-  0%, 100% { box-shadow: 0 0 0 2px var(--port-glow); }
-  50% { box-shadow: 0 0 0 5px var(--port-glow); }
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
 `
 
-/** Breathing ring for anything carrying `--port-glow` (handles, port nodes). */
+/**
+ * Breathing ring for anything carrying `--port-glow` (handles, port nodes).
+ * The element must be positioned (handles and port nodes are).
+ */
 export const flowingGlow = css({
-  animation: `${breathe} 1.6s ease-in-out infinite`,
+  "&::after": {
+    content: '""',
+    position: "absolute",
+    inset: 0,
+    borderRadius: "inherit",
+    boxShadow: "0 0 0 4px var(--port-glow)",
+    pointerEvents: "none",
+    animation: `${breathe} 1.6s ease-in-out infinite`,
+  },
   "@media (prefers-reduced-motion: reduce)": {
-    animation: "none",
-    boxShadow: "0 0 0 3px var(--port-glow)",
+    "&::after": { animation: "none", opacity: 0.75 },
   },
 })
 
