@@ -11,6 +11,9 @@ const builtin = defineView({
   mount() {},
 })
 
+/** As nonoha-client-js `pluginStaticUrl` builds them (the host's part). */
+const staticUrl = (plugin: PluginInfo, path: string) => (plugin.static ? `http://h${plugin.static}${path}#${plugin.rev ?? ''}` : null)
+
 const plugin = (id: string, extra: Partial<PluginInfo> = {}): PluginInfo => ({
   id,
   builtin: false,
@@ -46,10 +49,12 @@ function fakeFetch(routes: Record<string, { status: number; body?: unknown }>) {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('loadViewCatalog', () => {
-  it('lists built-ins, then plugin views by "<plugin id>/<view id>" with revisioned module URLs', async () => {
-    const base = 'http://h:8000/plugins/cv_nodes/static/views/'
-    const urls = fakeFetch({ [`${base}manifest.json?rev=r%201`]: { status: 200, body: manifest } })
-    const catalog = await loadViewCatalog('h:8000', [plugin('cv_nodes'), plugin('plain', { static: null })], {
+  it('lists built-ins, then plugin views by "<plugin id>/<view id>", with URLs from the host', async () => {
+    const base = 'http://h/plugins/cv_nodes/static/views/'
+    const urls = fakeFetch({ [`${base}manifest.json#r 1`]: { status: 200, body: manifest } })
+    const catalog = await loadViewCatalog({
+      plugins: [plugin('cv_nodes'), plugin('plain', { static: null })],
+      staticUrl,
       builtins: [builtin],
     })
     expect(Array.from(catalog.keys())).toEqual(['builtin/meter', 'cv_nodes/overlay'])
@@ -62,24 +67,31 @@ describe('loadViewCatalog', () => {
       description: '',
       settings: {},
       suits: [{ node: 'Grid', port: 'out' }],
-      moduleUrl: `${base}overlay.js?rev=r%201`,
+      moduleUrl: `${base}overlay.js#r 1`,
     })
     expect(catalog.get('builtin/meter')).toMatchObject({ source: 'builtin', definition: builtin, suits: [] })
-    expect(urls).toEqual([`${base}manifest.json?rev=r%201`]) // no request for a plugin without static/
+    expect(urls).toEqual([`${base}manifest.json#r 1`]) // no request for a plugin without static/
   })
 
   it('skips plugins without views and reports broken manifests', async () => {
     fakeFetch({
-      'http://h/plugins/a/static/views/manifest.json': { status: 500 },
-      'http://h/plugins/b/static/views/manifest.json': { status: 200, body: { sdk: 2, views: [] } },
+      'http://h/plugins/a/static/views/manifest.json#': { status: 500 },
+      'http://h/plugins/b/static/views/manifest.json#': { status: 200, body: { sdk: 2, views: [] } },
     })
     const errors: [string, string][] = []
-    const catalog = await loadViewCatalog('h', [plugin('a', { rev: null }), plugin('b', { rev: null }), plugin('c', { rev: null })], {
+    const catalog = await loadViewCatalog({
+      plugins: [plugin('a', { rev: null }), plugin('b', { rev: null }), plugin('c', { rev: null })],
+      staticUrl,
       onError: (id, error) => errors.push([id, String(error)]),
     })
     expect(catalog.size).toBe(0)
     expect(errors.map(([id]) => id)).toEqual(['a', 'b'])
     expect(errors[1][1]).toMatch(/SDK 2/)
+  })
+
+  it('lists only built-ins without plugins', async () => {
+    const catalog = await loadViewCatalog({ builtins: [builtin] })
+    expect(Array.from(catalog.keys())).toEqual(['builtin/meter'])
   })
 })
 

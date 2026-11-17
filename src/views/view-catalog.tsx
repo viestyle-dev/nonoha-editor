@@ -1,11 +1,11 @@
 "use client"
 
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react"
-import { fetchPlugins } from "nonoha-client-js"
+import { fetchPlugins, pluginStaticUrl } from "nonoha-client-js"
 import { builtinViewEntry, inputAccepts, loadViewCatalog, type DefinedView, type ViewEntry, type ViewTheme } from "nonoha-views"
 
 import type { ChartTheme } from "@/src/lib/chart-theme"
-import { useInspectorState } from "@/src/inspector/inspector-store"
+import { useEngineCapabilitiesFor } from "@/src/stores/engine-capabilities-store"
 
 export type { ViewEntry } from "nonoha-views"
 
@@ -33,25 +33,31 @@ export function ViewCatalogProvider({
   builtins: readonly DefinedView[]
   children: ReactNode
 }) {
-  const { pluginStatic, capabilities } = useInspectorState()
+  const engine = useEngineCapabilitiesFor(engineGatewayUrl)
+  const settled = engine.status !== "loading"
+  const pluginStatic = Boolean(engine.capabilities?.plugin_static)
   const [loaded, setLoaded] = useState<ReadonlyMap<string, ViewEntry> | null>(null)
 
   useEffect(() => {
     setLoaded(null)
-    if (!engineGatewayUrl || capabilities === "loading") return
+    if (!engineGatewayUrl || !settled) return
     let cancelled = false
+    const onError = (pluginId: string, error: unknown) => console.warn(`[views] ${pluginId}:`, error)
     ;(async () => {
-      const plugins = pluginStatic ? await fetchPlugins(engineGatewayUrl).catch(() => []) : []
-      const catalog = await loadViewCatalog(engineGatewayUrl, plugins, {
-        builtins,
-        onError: (pluginId, error) => console.warn(`[views] ${pluginId}:`, error),
-      })
+      const catalog = pluginStatic
+        ? await loadViewCatalog({
+            plugins: await fetchPlugins(engineGatewayUrl).catch(() => []),
+            staticUrl: (plugin, path) => pluginStaticUrl(engineGatewayUrl, plugin, path),
+            builtins,
+            onError,
+          })
+        : await loadViewCatalog({ builtins, onError })
       if (!cancelled) setLoaded(catalog)
     })()
     return () => {
       cancelled = true
     }
-  }, [engineGatewayUrl, pluginStatic, capabilities, builtins])
+  }, [engineGatewayUrl, settled, pluginStatic, builtins])
 
   const value = useMemo<ViewCatalog>(() => {
     if (loaded) return { loaded: true, entries: loaded }

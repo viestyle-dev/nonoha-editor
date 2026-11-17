@@ -3,27 +3,38 @@
 How the editor shows what flows through a graph, and how plugins add their
 own displays. Features switch on the engine's capabilities
 (`GET /node-flow/capabilities`), never on its version; engine 1.0 keeps
-working without them.
+working without them. The capabilities are read once per engine by
+`src/stores/engine-capabilities-store.tsx` (provider in `app/app-layout.tsx`);
+the inspector, the view catalog, About and the environment settings read
+them there.
 
 ```mermaid
 flowchart LR
   subgraph engine["nonoha-engine"]
     graphWS["WS graphs/{g}/endpoint"]
     inspWS["WS graphs/{g}/inspector"]
-    static["/plugins/{id}/static/views"]
+    caps["GET capabilities"]
+    static["/plugins/{id}/static/"]
+  end
+  subgraph client["nonoha-client-js"]
+    sub["GraphClient.subscribeOutput<br/>(routed by port, current value)"]
+    staticUrl["pluginStaticUrl"]
   end
   subgraph editor["nonoha-editor"]
-    hub["graph-output-hub<br/>(one callback, routed by port)"]
+    capsStore["engine-capabilities-store"]
     store["EditorInspector<br/>(inspector-store.tsx)"]
     input["useEditorInput"]
     views["ViewCatalog + PluginViewNode"]
     ui["activity · peek · pin · preview · status"]
   end
-  graphWS --> hub --> input
+  graphWS --> sub --> input
+  caps --> capsStore
+  capsStore --> store
+  capsStore --> views
   inspWS --> store
   store --> input
   store --> ui
-  static --> views
+  static --> staticUrl --> views
   input --> views
 ```
 
@@ -45,9 +56,13 @@ graph (provider in `app/graphs/page.tsx`).
 ## Inputs of display nodes: `useEditorInput`
 
 Every display node reads its handles through
-`useEditorInput(graphEndpoint, handleId, onValues, watchOptions)`:
+`useEditorInput(graphEndpoint, handleId, onValues, watchOptions, { current })`:
 
-- solid edge from `$output:<port>` → every value (graph output hub)
+- solid edge from `$output:<port>` → every value (`GraphClient.subscribeOutput`
+  of nonoha-client-js). Outputs are sent only when they change, so a state
+  (labels, readouts, the rec gate) passes `current`: `true` to get the value
+  the port holds now through `onValues`, or a function to take it apart
+  (the clear gate primes without firing). A newer value always wins.
 - dashed edge from an engine node output → inspector samples
   (`IMAGE_WATCH`, `SNAPSHOT_WATCH`, `LATEST_WATCH`, `CONTROL_WATCH`, or the
   default `batch: "since"` for accumulating charts)
@@ -74,15 +89,18 @@ hosts views.
 
 - Catalog: `src/views/view-catalog.tsx` wraps `loadViewCatalog`: the
   built-in views, then each plugin's `static/views/manifest.json` from the
-  plugin list (`fetchPlugins` of nonoha-client-js). Keys:
+  plugin list (`fetchPlugins` and `pluginStaticUrl` of nonoha-client-js,
+  when the engine serves plugin static files). Keys:
   `<plugin id>/<view id>` or `builtin/<view id>`. Built-ins are listed
   before the plugins load.
 - Node: `PluginViewNode` loads the module (`loadView`), mounts it with
   `createViewHost`, makes one input handle per view input and feeds it
-  through `useEditorInput` (dashed edges use `watchOptionsFor(input)`, the
-  same options as apps). Settings are edited as text and resolved by the
-  host (`min`/`max`, `enum`, defaults). A missing view keeps its settings
-  and shows a placeholder.
+  through `useEditorInput` as the input declares (`delivery`): dashed
+  edges use `watchOptionsFor(input)`, the same options as apps, and
+  `"latest"` inputs on solid edges get the current value first (inputs
+  subscribe once the view is mounted, so it is not lost). Settings
+  are edited as text and resolved by the host (`min`/`max`, `enum`,
+  defaults). A missing view keeps its settings and shows a placeholder.
 - Add menu → "Views": a view input shows "one of" its accepted types.
   Dropping an edge from an engine output on the canvas offers "Show in …"
   for views that accept its type, views whose `suits` name that output

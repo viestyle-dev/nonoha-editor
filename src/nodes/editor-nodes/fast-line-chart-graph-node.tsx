@@ -240,17 +240,8 @@ const GraphWrapper = memo(
 
     // Solid edges ($output ports) or dashed edges (engine node outputs via the inspector).
     useEditorInput(graphEndpoint, "traces", onTracesCallback, SNAPSHOT_WATCH)
-    const xLabelsSource = useEditorInput(graphEndpoint, "xLabels", onXLabelsCallback, SNAPSHOT_WATCH)
-    const xLabelsPort = xLabelsSource.kind === "output" ? xLabelsSource.portName : undefined
-
-    // x labels rarely change: fetch the current value once via REST
-    useEffect(() => {
-      if (!graphEndpoint || !xLabelsPort) return
-
-      graphEndpoint.fetchOutputValues(xLabelsPort)
-        .then(values => onXLabelsCallback(values))
-        .catch(error => console.error(error))
-    }, [graphEndpoint, xLabelsPort, onXLabelsCallback])
+    // Labels rarely change: also take the value the port holds now.
+    useEditorInput(graphEndpoint, "xLabels", onXLabelsCallback, SNAPSHOT_WATCH, { current: true })
 
     return (
       <FastLineChartGraph

@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef } from "react"
 import type { GraphEndpoint, InspectorPortRef, PortValue, WatchOptions } from "nonoha-client-js"
 
 import { getNodeType } from "@/src/api/graph-api"
-import { subscribeGraphOutput } from "@/src/api/graph-output-hub"
 import { useInspector, useInspectorState } from "@/src/inspector/inspector-store"
 
 export type EditorInputSource =
@@ -16,6 +15,18 @@ export type EditorInputSource =
   | { kind: "inspector"; ref: InspectorPortRef; available: boolean }
 
 const NONE: EditorInputSource = { kind: "none" }
+
+export interface EditorInputOptions {
+  /**
+   * For a solid edge, also the value the output port holds now (outputs
+   * send only new values): `true` delivers it to `onValues`, a function
+   * receives it instead (e.g. to prime state without acting on it).
+   * Dashed edges are sampled and need none.
+   */
+  current?: boolean | ((values: PortValue[]) => void)
+  /** Subscribe only while true (e.g. once the receiver exists, so the current value is not lost). Default true. */
+  enabled?: boolean
+}
 
 /**
  * Values arriving at one input handle of an editor (display) node, whichever
@@ -28,6 +39,7 @@ export function useEditorInput(
   handleId: string,
   onValues: (values: PortValue[]) => void,
   inspectorOptions: WatchOptions = DEFAULT_WATCH,
+  options: EditorInputOptions = {},
 ): EditorInputSource {
   const connections = useHandleConnections({ type: "target", id: handleId })
   const connection = connections[0]
@@ -40,6 +52,8 @@ export function useEditorInput(
   onValuesRef.current = onValues
   const optionsRef = useRef(inspectorOptions)
   optionsRef.current = inspectorOptions
+  const currentRef = useRef(options.current)
+  currentRef.current = options.current
 
   const source = useMemo<EditorInputSource>(() => {
     if (!sourceId) return NONE
@@ -58,11 +72,21 @@ export function useEditorInput(
   const sourceKey =
     source.kind === "output" ? `o:${source.portName}` : source.kind === "inspector" ? `i:${source.ref.node}.${source.ref.port}` : ""
   const inspectorLive = source.kind === "inspector" && source.available && status.state !== "idle"
+  const wanted = options.enabled ?? true
 
   useEffect(() => {
+    if (!wanted) return
     if (source.kind === "output") {
       if (!graphEndpoint) return
-      return subscribeGraphOutput(graphEndpoint, source.portName, values => onValuesRef.current(values))
+      return graphEndpoint.subscribeOutput(source.portName, values => onValuesRef.current(values), {
+        current: currentRef.current
+          ? values => {
+              const current = currentRef.current
+              ;(typeof current === "function" ? current : onValuesRef.current)(values)
+            }
+          : false,
+        onError: error => console.error(error),
+      })
     }
     if (source.kind === "inspector" && inspector && inspectorLive) {
       const handle = inspector.watch(source.ref, optionsRef.current, {
@@ -73,7 +97,7 @@ export function useEditorInput(
       return () => handle?.unwatch()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- sourceKey identifies `source`
-  }, [sourceKey, graphEndpoint, inspector, inspectorLive])
+  }, [sourceKey, graphEndpoint, inspector, inspectorLive, wanted])
 
   return source
 }

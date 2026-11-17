@@ -13,7 +13,7 @@ import type { PortValue } from 'nonoha-client-js'
  * export default {
  *   sdk: 1,
  *   id: "level",
- *   inputs: [{ name: "values", accepts: ["f32[?]"] }],
+ *   inputs: [{ name: "values", accepts: ["f32[?]"], delivery: "latest" }],
  *   settings: { gain: { type: "number", default: 1, min: 0, max: 10 } },
  *   suits: [{ node: "MyNode", port: "out" }],
  *   mount(el, ctx) {
@@ -36,6 +36,15 @@ export interface ViewInputSpec {
   name: string
   /** Accepted value types, nonoha notation with ? for any size, e.g. "u8[?x?x3]", "f32[?]", "f32[*]", "any". */
   accepts: string[]
+  /**
+   * What the view needs of the values (only the view knows):
+   * - "every" (default): a stream. The view uses each value (history,
+   *   meters, events); hosts deliver every value they get, from now on.
+   * - "latest": a state. The view draws the latest value; hosts show the
+   *   current value first and may skip values in between (e.g. images).
+   * Hosts that sample (an inspector) may still drop values under load.
+   */
+  delivery?: 'every' | 'latest'
   description?: string
   /** Optional input: the view works without it. */
   optional?: boolean

@@ -41,7 +41,7 @@ describe('viewDefinitionProblems', () => {
     const problems = viewDefinitionProblems({
       sdk: 2,
       id: 'a/b',
-      inputs: [{ name: 'x', accepts: [] }, { name: 'x', accepts: ['f32'] }],
+      inputs: [{ name: 'x', accepts: [] }, { name: 'x', accepts: ['f32'], delivery: 'some' }],
       settings: {
         a: { type: 'color' },
         b: { type: 'number', default: 'one', min: 5, max: 1 },
@@ -56,6 +56,7 @@ describe('viewDefinitionProblems', () => {
       'id must be a non-empty string without "/"',
       'inputs[0].accepts must be a non-empty array of types',
       'input "x" is declared twice',
+      'inputs[1].delivery must be "every" or "latest"',
       'setting "a": type must be one of number, string, boolean',
       'setting "b": default must be a number',
       'setting "b": min is above max',

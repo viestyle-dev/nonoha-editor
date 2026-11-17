@@ -73,11 +73,13 @@ export const spectrogramView = defineView({
     {
       name: 'spectrum',
       accepts: ['f32[?]', 'f64[?]'],
+      delivery: 'every', // each row is a column of the history
       description: 'Power spectrum per row (linear power; log10 power with inputIsLog10)',
     },
     {
       name: 'freqs',
       accepts: ['f32[?]', 'f64[?]'],
+      delivery: 'latest',
       optional: true,
       description: 'Frequency of each bin in Hz (labels the frequency axis)',
     },

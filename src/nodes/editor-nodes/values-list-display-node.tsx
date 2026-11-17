@@ -7,7 +7,7 @@ import {
   ResizeDragEvent,
 } from "@xyflow/react"
 import { Divider, Paper } from "@mui/material"
-import { memo, useCallback, useEffect, useState } from "react"
+import { memo, useCallback, useState } from "react"
 import { css } from "@emotion/react"
 
 import {
@@ -166,7 +166,7 @@ const ValuesListDisplay = memo(
 
     // Solid edge ($output port) or dashed edge (engine node: latest value
     // sampled by the inspector).
-    const valuesSource = useEditorInput(
+    useEditorInput(
       graphEndpoint,
       "values",
       (values: PortValue[]) => {
@@ -175,23 +175,9 @@ const ValuesListDisplay = memo(
         setTriggerCount(prev => prev + 1)
       },
       SNAPSHOT_WATCH,
+      // The value the port holds now (not counted as a trigger).
+      { current: (values: PortValue[]) => setValueLists(updateList(values)) },
     )
-    const valuesPort =
-      valuesSource.kind === "output" ? valuesSource.portName : undefined
-
-    useEffect(() => {
-      if (!graphEndpoint || !valuesPort) {
-        return
-      }
-      graphEndpoint.fetchOutputValues(valuesPort)
-        .then(values => {
-          const updatedLists = updateList(values)
-          setValueLists(updatedLists)
-        })
-        .catch(error => {
-          console.error(error)
-        })
-    }, [graphEndpoint, valuesPort])
 
     return (
       <div

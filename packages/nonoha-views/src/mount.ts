@@ -1,11 +1,4 @@
-import type {
-  GraphClient,
-  InspectorClient,
-  InspectorPortRef,
-  PortData,
-  WatchHandle,
-  WatchOptions,
-} from 'nonoha-client-js'
+import type { GraphClient, InspectorClient, InspectorPortRef, WatchHandle, WatchOptions } from 'nonoha-client-js'
 import type { ViewEntry } from './catalog'
 import { loadView } from './catalog'
 import type { ViewHost } from './host'
@@ -13,7 +6,7 @@ import { createViewHost, defaultViewTheme, watchOptionsFor } from './host'
 import type { DefinedView, ViewTheme } from './sdk'
 
 /** Where a view reads graph outputs (e.g. the app's GraphClient). */
-export type OutputSource = Pick<GraphClient, 'addOutputCallback' | 'removeOutputCallback' | 'fetchOutputValues'>
+export type OutputSource = Pick<GraphClient, 'subscribeOutput'>
 /** Where a view samples internal ports (e.g. the app's InspectorClient). */
 export type SampleSource = Pick<InspectorClient, 'watch'>
 
@@ -40,7 +33,8 @@ export interface MountedView {
 /**
  * Show a view (a catalog entry or a definition) in `element`, fed from a
  * graph through the clients the caller passes (it never opens or closes
- * connections). The view follows the element's size.
+ * connections). Inputs get what they declare (`delivery`): "latest" ones
+ * see the current value first. The view follows the element's size.
  */
 export async function mountView(
   view: ViewEntry | DefinedView,
@@ -61,46 +55,28 @@ export async function mountView(
     onError: options.onError,
   })
 
-  const byPort = new Map<string, string[]>()
+  const stops: (() => void)[] = []
   const watches: WatchHandle[] = []
   for (const input in bindings) {
     const binding = bindings[input]
+    const spec = definition.inputs.find(i => i.name === input) ?? { name: input, accepts: ['any'] }
     if (typeof binding === 'string') {
-      byPort.set(binding, (byPort.get(binding) ?? []).concat(input))
+      stops.push(
+        outputs!.subscribeOutput(binding, values => host.deliver(input, values), {
+          current: spec.delivery === 'latest',
+          onError: options.onError,
+        }),
+      )
       continue
     }
     const { watch, ...ref } = binding
-    const spec = definition.inputs.find(i => i.name === input)
-    const watchOptions = watch ?? (spec ? watchOptionsFor(spec) : { intervalMs: 100, batch: 'last' as const })
     watches.push(
-      samples!.watch(ref, watchOptions, {
+      samples!.watch(ref, watch ?? watchOptionsFor(spec), {
         onSample: sample => {
           if (sample.values) host.deliver(input, sample.values)
         },
       }),
     )
-  }
-
-  // Ports that delivered a live value: the first fetch must not overwrite it.
-  const live = new Set<string>()
-  const onOutput = (output: PortData) => {
-    const inputs = byPort.get(output.portName)
-    if (!inputs) return
-    live.add(output.portName)
-    for (let i = 0; i < inputs.length; ++i) host.deliver(inputs[i], output.values)
-  }
-  if (outputs && byPort.size > 0) {
-    outputs.addOutputCallback(onOutput)
-    // Show the current value right away (outputs only arrive on change).
-    byPort.forEach((inputs, port) => {
-      outputs
-        .fetchOutputValues(port)
-        .then(values => {
-          if (live.has(port)) return
-          for (let i = 0; i < inputs.length; ++i) host.deliver(inputs[i], values)
-        })
-        .catch(() => {})
-    })
   }
 
   const observer =
@@ -116,7 +92,7 @@ export async function mountView(
     host,
     unmount() {
       observer?.disconnect()
-      if (outputs) outputs.removeOutputCallback(onOutput)
+      for (let i = 0; i < stops.length; ++i) stops[i]()
       for (let i = 0; i < watches.length; ++i) watches[i].unwatch()
       host.destroy()
     },

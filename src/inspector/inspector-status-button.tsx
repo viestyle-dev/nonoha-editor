@@ -6,6 +6,7 @@ import { Sensors, SensorsOff } from "@mui/icons-material"
 import { useState } from "react"
 
 import { useThemeStore } from "@/src/stores/theme-store"
+import { useEngineCapabilitiesFor } from "@/src/stores/engine-capabilities-store"
 import { useInspector, useInspectorState } from "@/src/inspector/inspector-store"
 
 const REASON_TEXT: Record<string, string> = {
@@ -24,7 +25,8 @@ const REASON_TEXT: Record<string, string> = {
 export function InspectorStatusButton() {
   const [{ colors }] = useThemeStore()
   const inspector = useInspector()
-  const { supported, enabled, status, engineVersion } = useInspectorState()
+  const { supported, enabled, status } = useInspectorState()
+  const engineVersion = useEngineCapabilitiesFor(inspector?.engineGatewayUrl).capabilities?.engine
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
 
   if (!inspector || supported === undefined) return null

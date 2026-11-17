@@ -129,33 +129,16 @@ const BytesDisplay = memo(
 
     // Subscribe to updates: solid edge ($output port) or dashed edge (engine
     // node: latest value sampled by the inspector).
-    const valuesSource = useEditorInput(
+    useEditorInput(
       graphEndpoint,
       "values",
       (values: PortValue[]) => {
         refCurrentPortValues.current = values
         updateDisplay(values)
       },
-      LATEST_WATCH
+      LATEST_WATCH,
+      { current: true },
     )
-    const valuesPort =
-      valuesSource.kind === "output" ? valuesSource.portName : undefined
-
-    // Fetch initial data
-    useEffect(() => {
-      if (!graphEndpoint || !valuesPort) {
-        return
-      }
-
-      graphEndpoint.fetchOutputValues(valuesPort)
-        .then(values => {
-          refCurrentPortValues.current = values
-          updateDisplay(values)
-        })
-        .catch(error => {
-          console.error(error)
-        })
-    }, [valuesPort, graphEndpoint, updateDisplay])
 
     const [{ colors }] = useThemeStore()
 

@@ -303,25 +303,8 @@ const GraphWrapper = memo(
     // Solid edges ($output ports) or dashed edges (engine node outputs via
     // the inspector: series rows since the last sample, latest y labels).
     useEditorInput(graphEndpoint, "series", onSeriesCallback)
-    const yLabelsSource = useEditorInput(graphEndpoint, "yLabels", onYLabelsCallback, SNAPSHOT_WATCH)
-    const yLabelsPort = yLabelsSource.kind === "output" ? yLabelsSource.portName : undefined
-
-    // Prime yLabels from the REST snapshot so a chart opened mid-session
-    // gets its axis before the next dispatch.
-    useEffect(() => {
-      if (!graphEndpoint || !yLabelsPort) {
-        return
-      }
-
-      graphEndpoint
-        .fetchOutputValues(yLabelsPort)
-        .then(values => {
-          onYLabelsCallback(values)
-        })
-        .catch(error => {
-          console.error(error)
-        })
-    }, [graphEndpoint, yLabelsPort, onYLabelsCallback])
+    // Labels rarely change: also take the value the port holds now.
+    useEditorInput(graphEndpoint, "yLabels", onYLabelsCallback, SNAPSHOT_WATCH, { current: true })
 
     // Clear (manual button or the clear gate).
     const isFirstRevisionRef = useRef(true)

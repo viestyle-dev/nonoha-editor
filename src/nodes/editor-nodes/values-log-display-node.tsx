@@ -56,18 +56,33 @@ const ValuesLogDisplay = memo(
     // Live accumulation: solid edge ($output port: one entry per dispatch)
     // or dashed edge (engine node: one entry per inspector sample, holding
     // every row since the previous sample).
-    const valuesSource = useEditorInput(graphEndpoint, "values", (values: PortValue[]) => {
-      const entry = values.map(v => valueToString(v)).join(" | ")
-      bufferRef.current.push(entry)
-      entryCountRef.current += 1
+    const valuesSource = useEditorInput(
+      graphEndpoint,
+      "values",
+      (values: PortValue[]) => {
+        const entry = values.map(v => valueToString(v)).join(" | ")
+        bufferRef.current.push(entry)
+        entryCountRef.current += 1
 
-      if (bufferRef.current.length > maxEntries) {
-        bufferRef.current = bufferRef.current.slice(-maxEntries)
-      }
+        if (bufferRef.current.length > maxEntries) {
+          bufferRef.current = bufferRef.current.slice(-maxEntries)
+        }
 
-      setTriggerCount(prev => prev + 1)
-      setRenderTrigger(prev => prev + 1)
-    })
+        setTriggerCount(prev => prev + 1)
+        setRenderTrigger(prev => prev + 1)
+      },
+      undefined,
+      {
+        // A solid edge starts the log with the value the port holds now
+        // (not counted as a trigger).
+        current: (values: PortValue[]) => {
+          if (values.length === 0) return
+          bufferRef.current = [values.map(v => valueToString(v)).join(" | ")]
+          entryCountRef.current = 1
+          setRenderTrigger(prev => prev + 1)
+        },
+      },
+    )
     const valuesPort =
       valuesSource.kind === "output" ? valuesSource.portName : undefined
     const inspectedPort =
@@ -75,34 +90,13 @@ const ValuesLogDisplay = memo(
         ? `${valuesSource.ref.node}.${valuesSource.ref.port}`
         : undefined
 
-    // Initial fetch + reconnect reset
+    // A new source (or reconnect) starts a new log.
     useEffect(() => {
-      if (inspectedPort) {
-        // Dashed edge: nothing to fetch, samples follow.
-        bufferRef.current = []
-        entryCountRef.current = 0
+      if (!inspectedPort && !(graphEndpoint && valuesPort)) {
         return
       }
-      if (!graphEndpoint || !valuesPort) {
-        return
-      }
-
       bufferRef.current = []
       entryCountRef.current = 0
-
-      graphEndpoint
-        .fetchOutputValues(valuesPort)
-        .then(values => {
-          if (values.length > 0) {
-            const entry = values.map(v => valueToString(v)).join(" | ")
-            bufferRef.current = [entry]
-            entryCountRef.current = 1
-            setRenderTrigger(prev => prev + 1)
-          }
-        })
-        .catch(error => {
-          console.error(error)
-        })
     }, [graphEndpoint, valuesPort, inspectedPort])
 
     // Auto-scroll (only when enabled)

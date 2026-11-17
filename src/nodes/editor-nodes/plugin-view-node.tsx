@@ -62,14 +62,22 @@ const ViewInput = memo(function ViewInput({
   input,
   graphEndpoint,
   hostRef,
+  hostReady,
 }: {
   input: ViewInputSpec
   graphEndpoint: GraphEndpoint | undefined
   hostRef: { current: ViewHost | null }
+  /** The view is mounted: values before that would be lost (the current one too). */
+  hostReady: boolean
 }) {
   const name = input.name
+  // What the view declares it needs: sampling for dashed edges, and the
+  // current value first for "latest" inputs on solid edges.
   const options = useMemo(() => watchOptionsFor(input), [input])
-  useEditorInput(graphEndpoint, name, values => hostRef.current?.deliver(name, values), options)
+  useEditorInput(graphEndpoint, name, values => hostRef.current?.deliver(name, values), options, {
+    current: input.delivery === "latest",
+    enabled: hostReady,
+  })
   return (
     <Tooltip title={`${input.description ?? name}\n[${input.accepts.join(", ")}]`} placement="left">
       <NodeHandleLeft id={name} label={name} />
@@ -152,6 +160,7 @@ export const PluginViewNode = memo((props: NodeProps<PluginViewNode>) => {
   const [error, setError] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const hostRef = useRef<ViewHost | null>(null)
+  const [hostReady, setHostReady] = useState(false)
 
   const viewTheme = useMemo(
     () => viewThemeFrom(chartTheme, colors.surfaceContainerHighest),
@@ -194,11 +203,13 @@ export const PluginViewNode = memo((props: NodeProps<PluginViewNode>) => {
       return
     }
     hostRef.current = host
+    setHostReady(true)
     const observer = new ResizeObserver(() => host.resize(element.clientWidth, element.clientHeight))
     observer.observe(element)
     return () => {
       observer.disconnect()
       hostRef.current = null
+      setHostReady(false)
       host.destroy()
       element.replaceChildren()
     }
@@ -311,7 +322,13 @@ export const PluginViewNode = memo((props: NodeProps<PluginViewNode>) => {
       <div css={css({ display: "flex", flexGrow: 1, minHeight: 0, gap: 4, padding: "4px 0" })}>
         <div css={css({ display: "flex", flexDirection: "column", gap: 4, justifyContent: "center" })}>
           {(entry?.inputs ?? []).map(input => (
-            <ViewInput key={input.name} input={input} graphEndpoint={props.data.graphEndpoint} hostRef={hostRef} />
+            <ViewInput
+              key={input.name}
+              input={input}
+              graphEndpoint={props.data.graphEndpoint}
+              hostRef={hostRef}
+              hostReady={hostReady}
+            />
           ))}
         </div>
         <div css={css({ position: "relative", flexGrow: 1, minWidth: 0, marginRight: 8 })} className="nodrag">

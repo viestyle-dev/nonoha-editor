@@ -97,32 +97,16 @@ const LabelDisplay = memo(
 
     // Solid edge ($output port) or dashed edge (engine node: latest value
     // sampled by the inspector).
-    const valuesSource = useEditorInput(
+    useEditorInput(
       graphEndpoint,
       "values",
       (values: PortValue[]) => {
         refCurrentPortValues.current = values
         updateLabel(values)
       },
-      LATEST_WATCH
+      LATEST_WATCH,
+      { current: true },
     )
-    const valuesPort =
-      valuesSource.kind === "output" ? valuesSource.portName : undefined
-
-    useEffect(() => {
-      if (!graphEndpoint || !valuesPort) {
-        return
-      }
-
-      graphEndpoint.fetchOutputValues(valuesPort)
-        .then(values => {
-          refCurrentPortValues.current = values
-          updateLabel(values)
-        })
-        .catch(error => {
-          console.error(error)
-        })
-    }, [valuesPort, graphEndpoint])
 
     return (
       <Typography

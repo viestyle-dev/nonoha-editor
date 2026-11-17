@@ -78,9 +78,6 @@ export function useControlGates({
   const clearGateRef = useRef(new RisingEdgeGate())
   // Inspector samples hold several rows: every row is fed to the clear gate.
   const clearAllRowsRef = useRef(false)
-  // Once any frame has been processed, a late-arriving REST snapshot (older
-  // value) must not overwrite the recording state.
-  const recSeenRef = useRef(false)
 
   const [mode, setMode] = useState<ControlGateMode>("auto")
   const modeRef = useRef(mode)
@@ -92,30 +89,47 @@ export function useControlGates({
   const [recSignal, setRecSignal] = useState<boolean | undefined>(undefined)
 
   // --- clear
-  const clearSource = useEditorInput(graphEndpoint, "clear", (values: PortValue[]) => {
-    // Always update the gate: edges seen in MANUAL are consumed and must not
-    // fire retroactively when returning to AUTO.
-    const fired = clearAllRowsRef.current
-      ? updateGateWithRows(clearGateRef.current, values)
-      : clearGateRef.current.update(lastTruthyOfValues(values))
-    if (fired && modeRef.current === "auto") {
-      onClearRef.current?.()
-    }
-  })
+  const clearSource = useEditorInput(
+    graphEndpoint,
+    "clear",
+    (values: PortValue[]) => {
+      // Always update the gate: edges seen in MANUAL are consumed and must not
+      // fire retroactively when returning to AUTO.
+      const fired = clearAllRowsRef.current
+        ? updateGateWithRows(clearGateRef.current, values)
+        : clearGateRef.current.update(lastTruthyOfValues(values))
+      if (fired && modeRef.current === "auto") {
+        onClearRef.current?.()
+      }
+    },
+    undefined,
+    // A solid edge primes the gate with the current value, never fires
+    // (opening the editor mid-window must not clear the plot). A dashed edge
+    // needs no prime: the gate's first observation never fires.
+    { current: (values: PortValue[]) => clearGateRef.current.prime(lastTruthyOfValues(values)) },
+  )
   clearAllRowsRef.current = clearSource.kind === "inspector"
 
   // --- rec
-  const recSource = useEditorInput(graphEndpoint, "rec", (values: PortValue[]) => {
-    const value = lastTruthyOfValues(values)
-    if (value !== undefined) {
-      recSeenRef.current = true
-      lastRecValueRef.current = value
-      setRecSignal(value)
-      if (modeRef.current === "auto") {
-        onRecChangeRef.current?.(value)
+  // A solid edge also syncs to the current value, so opening the editor
+  // mid-window shows the right recording state at once (a dashed edge is
+  // synced by its first inspector sample).
+  const recSource = useEditorInput(
+    graphEndpoint,
+    "rec",
+    (values: PortValue[]) => {
+      const value = lastTruthyOfValues(values)
+      if (value !== undefined) {
+        lastRecValueRef.current = value
+        setRecSignal(value)
+        if (modeRef.current === "auto") {
+          onRecChangeRef.current?.(value)
+        }
       }
-    }
-  })
+    },
+    undefined,
+    { current: true },
+  )
 
   const recPortName = recSource.kind === "output" ? recSource.portName : undefined
   const recInspected = inspectedKey(recSource)
@@ -138,61 +152,16 @@ export function useControlGates({
     }
   }, [mode])
 
-  // rec initial prime: sync to the current value on connect, so opening the
-  // editor mid-window immediately shows the correct recording state (a dashed
-  // edge is primed by its first inspector sample instead).
+  // A new rec source: the tracked value belongs to the previous one - drop
+  // it so a stale value is never applied on a MANUAL -> AUTO transition.
   useEffect(() => {
-    recSeenRef.current = false
-    // The tracked value belongs to the previous source - drop it so a stale
-    // value is never applied on a MANUAL -> AUTO transition.
     lastRecValueRef.current = undefined
     setRecSignal(undefined)
-    if (!graphEndpoint || !recPortName) {
-      return
-    }
-    let cancelled = false
-    graphEndpoint
-      .fetchOutputValues(recPortName)
-      .then(values => {
-        if (cancelled || recSeenRef.current) {
-          return
-        }
-        const value = lastTruthyOfValues(values)
-        if (value !== undefined) {
-          lastRecValueRef.current = value
-          setRecSignal(value)
-          if (modeRef.current === "auto") {
-            onRecChangeRef.current?.(value)
-          }
-        }
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
   }, [graphEndpoint, recPortName, recInspected])
 
-  // clear initial prime: only records the current value, never fires
-  // (opening the editor mid-window must not clear the plot). A dashed edge
-  // needs no prime: the gate's first observation never fires.
+  // A new clear source starts with a fresh gate.
   useEffect(() => {
     clearGateRef.current.reset()
-    if (!graphEndpoint || !clearPortName) {
-      return
-    }
-    let cancelled = false
-    graphEndpoint
-      .fetchOutputValues(clearPortName)
-      .then(values => {
-        if (cancelled) {
-          return
-        }
-        clearGateRef.current.prime(lastTruthyOfValues(values))
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
   }, [graphEndpoint, clearPortName, clearInspected])
 
   const recConnected = recPortName !== undefined || recInspected !== undefined

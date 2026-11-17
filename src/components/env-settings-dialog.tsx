@@ -25,36 +25,16 @@ import {
   EnvItem,
   EnvStatus,
   clearEnv,
-  fetchEngineCapabilities,
   fetchEnvStatus,
   setEnv,
 } from "nonoha-client-js"
 
-import { useInspector, useInspectorState } from "@/src/inspector/inspector-store"
+import { useEngineCapabilitiesFor } from "@/src/stores/engine-capabilities-store"
 import { useThemeStore } from "@/src/stores/theme-store"
 
-/**
- * Whether the engine accepts environment values from the editor. Inside a
- * graph page the inspector store already knows; elsewhere it is fetched.
- */
+/** Whether the engine accepts environment values from the editor. */
 export function useEnvSettingsSupported(engineGatewayUrl: string | undefined): boolean {
-  const inspector = useInspector()
-  const state = useInspectorState()
-  const useOwn = !inspector || inspector.engineGatewayUrl !== engineGatewayUrl
-  const [own, setOwn] = useState(false)
-
-  useEffect(() => {
-    if (!useOwn || !engineGatewayUrl) return
-    let cancelled = false
-    fetchEngineCapabilities(engineGatewayUrl)
-      .then(caps => !cancelled && setOwn(Boolean(caps?.env_settings)))
-      .catch(() => !cancelled && setOwn(false))
-    return () => {
-      cancelled = true
-    }
-  }, [useOwn, engineGatewayUrl])
-
-  return useOwn ? own : state.envSettings
+  return Boolean(useEngineCapabilitiesFor(engineGatewayUrl).capabilities?.env_settings)
 }
 
 /** "Environment settings" entry for a page's top-right menu (hidden on older engines). */

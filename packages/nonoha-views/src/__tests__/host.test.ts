@@ -172,10 +172,14 @@ describe('createViewHost', () => {
 })
 
 describe('watchOptionsFor', () => {
-  it('samples the latest value of 2-D and larger inputs, every row of the others', () => {
-    expect(watchOptionsFor({ name: 'image', accepts: ['u8[?x?x3]'] }).batch).toBe('last')
-    expect(watchOptionsFor({ name: 'grid', accepts: ['f32[*]'] }).autoStride).toEqual([0, 1])
-    expect(watchOptionsFor({ name: 'series', accepts: ['f32[?]', 'f64[?]'] }).batch).toBe('since')
-    expect(watchOptionsFor({ name: 'level', accepts: ['f32'] }).batch).toBe('since')
+  it('follows what the input declares, not its shape', () => {
+    // The latest value is the latest dispatch, all its rows (a spectrum may carry its bins as rows).
+    const latest = watchOptionsFor({ name: 'image', accepts: ['u8[?x?x3]'], delivery: 'latest' })
+    expect(latest.batch).toBe('all')
+    expect(latest.autoStride).toEqual([0, 1])
+    expect(watchOptionsFor({ name: 'spectrum', accepts: ['f32'], delivery: 'latest' }).batch).toBe('all')
+    // A block of audio frames is 2-D but every block counts.
+    expect(watchOptionsFor({ name: 'frames', accepts: ['f32[?x?]'], delivery: 'every' }).batch).toBe('since')
+    expect(watchOptionsFor({ name: 'any', accepts: ['f32[*]'] }).batch).toBe('since') // default: every
   })
 })

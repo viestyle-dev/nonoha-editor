@@ -12,7 +12,6 @@ import {
 import {
   ActivityEntry,
   EngineCapabilities,
-  fetchEngineCapabilities,
   InspectorClient,
   InspectorPortRef,
   InspectorStatus,
@@ -21,6 +20,7 @@ import {
   WatchOptions,
 } from "nonoha-client-js"
 import type { ValueKind } from "./interpret"
+import { useEngineCapabilitiesFor } from "@/src/stores/engine-capabilities-store"
 
 /**
  * The editor's side of the engine inspector: one InspectorClient per open
@@ -60,17 +60,10 @@ export function portKey(ref: InspectorPortRef): string {
 }
 
 export interface InspectorUiState {
-  /** undefined while capabilities load; false for engines without an inspector. */
+  /** undefined while the engine's capabilities load; false for engines without an inspector. */
   supported: boolean | undefined
   enabled: boolean
   status: InspectorStatus
-  engineVersion: string | undefined
-  /** Capabilities endpoint: "none" for engines before 1.1 (404). */
-  capabilities: "loading" | "none" | "error" | "ok"
-  /** Plugin static files (views) are served by the engine. */
-  pluginStatic: boolean
-  /** The engine accepts environment values (API keys) from the editor. */
-  envSettings: boolean
 }
 
 export interface EdgeEndpoints {
@@ -116,30 +109,22 @@ export class EditorInspector {
       supported: undefined,
       enabled: readInspectorDefault(),
       status: { state: "idle", reasons: [] },
-      engineVersion: undefined,
-      capabilities: "loading",
-      pluginStatic: false,
-      envSettings: false,
     }
   }
 
-  start(): void {
-    fetchEngineCapabilities(this.engineGatewayUrl)
-      .then(capabilities => {
-        if (this.disposed) return
-        this.capabilities = capabilities
-        this.setState({
-          supported: Boolean(capabilities?.inspector?.enabled),
-          engineVersion: capabilities?.engine,
-          capabilities: capabilities ? "ok" : "none",
-          pluginStatic: Boolean(capabilities?.plugin_static),
-          envSettings: Boolean(capabilities?.env_settings),
-        })
-        if (this.state.enabled) this.connect()
-      })
-      .catch(() => {
-        if (!this.disposed) this.setState({ supported: false, capabilities: "error" })
-      })
+  /** The engine's capabilities (null: none, e.g. an engine before 1.1 or unreachable). */
+  applyCapabilities(capabilities: EngineCapabilities | null): void {
+    if (this.disposed) return
+    this.capabilities = capabilities
+    const supported = Boolean(capabilities?.inspector?.enabled)
+    this.setState({ supported })
+    if (supported) {
+      if (this.state.enabled) this.connect()
+    } else if (this.client) {
+      this.client.close()
+      this.client = null
+      this.setState({ status: { state: "idle", reasons: [] } })
+    }
   }
 
   dispose(): void {
@@ -307,16 +292,20 @@ export function InspectorProvider({
   children: ReactNode
 }) {
   const [inspector, setInspector] = useState<EditorInspector | null>(null)
+  const engine = useEngineCapabilitiesFor(engineGatewayUrl)
   useEffect(() => {
     if (!engineGatewayUrl || !graphName) return
     const instance = new EditorInspector(engineGatewayUrl, graphName)
-    instance.start()
     setInspector(instance)
     return () => {
       instance.dispose()
       setInspector(null)
     }
   }, [engineGatewayUrl, graphName])
+  useEffect(() => {
+    if (!inspector || engine.status === "loading") return
+    inspector.applyCapabilities(engine.status === "ok" ? engine.capabilities : null)
+  }, [inspector, engine.status, engine.capabilities])
   return <InspectorContext.Provider value={inspector}>{children}</InspectorContext.Provider>
 }
 
@@ -324,10 +313,6 @@ const NO_STATE: InspectorUiState = {
   supported: undefined,
   enabled: false,
   status: { state: "idle", reasons: [] },
-  engineVersion: undefined,
-  capabilities: "loading",
-  pluginStatic: false,
-  envSettings: false,
 }
 const noopSubscribe = () => () => {}
 

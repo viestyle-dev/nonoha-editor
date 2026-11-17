@@ -19,8 +19,8 @@ flowchart TB
     P["Plugin views<br/>static/views/*.js (no imports)"] -. "contract (sdk: 1)" .-> V
 ```
 
-nonoha-views uses only the types of nonoha-client-js. Hosts open the
-connections and pass the clients in.
+nonoha-views uses only the types of nonoha-client-js (a peer dependency:
+the host's copy). Hosts open the connections and pass the clients in.
 
 ## Writing a view
 
@@ -34,7 +34,7 @@ export default {
   id: "level",
   title: "Level",
   description: "Bar of the latest value",
-  inputs: [{ name: "values", accepts: ["f32", "f32[?]"] }],
+  inputs: [{ name: "values", accepts: ["f32", "f32[?]"], delivery: "latest" }],
   settings: { max: { type: "number", default: 1, min: 0.001, max: 1000 } },
   size: { width: 200, height: 120 },
   suits: [{ node: "MyMeter", port: "out" }],
@@ -74,7 +74,7 @@ adds `sdk`.
 | `sdk` | Contract version, `1`. Hosts refuse other versions |
 | `id` | Unique within the plugin, no `/`. Hosts list the view as `<plugin id>/<id>` (`builtin/<id>` for built-in views) |
 | `title`, `description` | Shown by hosts (title defaults to `id`) |
-| `inputs` | `[{ name, accepts, description?, optional? }]`. Each input takes one value whose type is any of `accepts` |
+| `inputs` | `[{ name, accepts, delivery?, description?, optional? }]`. Each input takes one value whose type is any of `accepts` |
 | `settings` | `{ <key>: { type, default?, enum?, min?, max?, description? } }` |
 | `size` | Initial size in px when a host places the view |
 | `suits` | `[{ node, port }]`: engine node outputs the view suits, so hosts can suggest it first |
@@ -84,6 +84,16 @@ adds `sdk`.
 for any size: `"f32"` (scalar), `"f32[?]"` (vector), `"u8[?x?x3]"` (RGB
 image), `"f32[*]"` (any rank), `"any[?]"` (any dtype), `"any"` (anything).
 Ports carry plain arrays: the view decides what they mean.
+
+`delivery` says what the view needs of an input; only the view knows it:
+
+| `delivery` | The input is | Hosts |
+|---|---|---|
+| `"every"` (default) | a stream: each value counts (meters, history, events) | deliver every value they get, from now on |
+| `"latest"` | a state: the latest value is drawn (images, the current spectrum) | show the current value first; may skip values in between |
+
+Hosts that sample internal ports (an inspector) may still drop values
+under load; `watchOptionsFor(input)` gives the matching inspector options.
 
 ### Settings
 
@@ -121,9 +131,11 @@ The manifest is generated from the modules. Every `.js` file in the folder
 is a view module:
 
 ```bash
-node <nonoha-editor>/packages/nonoha-views/bin/view-manifest.mjs --write <plugin>/static/views
-node <nonoha-editor>/packages/nonoha-views/bin/view-manifest.mjs <plugin>/static/views  # compare only; exit 1 on a difference
+node <nonoha-views>/bin/view-manifest.mjs --write <plugin>/static/views
+node <nonoha-views>/bin/view-manifest.mjs <plugin>/static/views  # compare only; exit 1 on a difference
 ```
+
+(`<nonoha-views>`: this package's folder, after `npm install`.)
 
 The tool also reports modules that break the contract. When a host loads a
 module whose `inputs` or `settings` differ from its manifest entry, it uses
@@ -139,14 +151,18 @@ browser cache.
 With a bundler:
 
 ```ts
-import { GraphClient, fetchPlugins } from "nonoha-client-js"
+import { GraphClient, fetchPlugins, pluginStaticUrl } from "nonoha-client-js"
 import { builtinViews, loadViewCatalog, mountView } from "nonoha-views"
 
 const gateway = "localhost:8000"
 const graph = new GraphClient(gateway, "my_graph")
 graph.connect()
 
-const catalog = await loadViewCatalog(gateway, await fetchPlugins(gateway), { builtins: builtinViews })
+const catalog = await loadViewCatalog({
+  plugins: await fetchPlugins(gateway),
+  staticUrl: (plugin, path) => pluginStaticUrl(gateway, plugin, path), // the host reaches the engine
+  builtins: builtinViews,
+})
 const view = await mountView(catalog.get("user_nodes/level")!, element, {
   bindings: { values: "level" }, // view input -> graph output port
   outputs: graph,
@@ -164,7 +180,11 @@ the same calls.
   the inspector (through `samples`, an `InspectorClient`; options from
   `watchOptionsFor(input)` unless the binding gives `watch`).
 - `mountView` never opens or closes connections; the app owns the clients.
-- `mountView` shows the port's current value first, then every new value.
+- Inputs get what they declare: a `"latest"` input bound to an output port
+  sees the port's current value first (`GraphClient.subscribeOutput` with
+  `current`), an `"every"` input the values from now on.
+- `loadViewCatalog` finds views in `views/` of each plugin's static folder;
+  how to reach the engine (`staticUrl`) is the host's part.
 
 Hosts with their own value routing use `loadView` and `createViewHost`
 directly (e.g. an editor node: `host.deliver(input, values)`,
@@ -178,13 +198,13 @@ Built-in views follow the same contract as plugin views.
 
 ## Development
 
-From the nonoha-editor root:
+The type declarations of nonoha-client-js must be built first (its
+`npm run build`); a workspace that holds both packages orders the two builds.
 
 ```bash
-npm install
-npm run build:deps   # tsc -b (builds nonoha-client-js first)
-npm test             # vitest, packages included
-npm run build:iife   # dist/nonoha-views.iife.js
+npm run build        # tsc -b: dist/ with type declarations
+npm test             # vitest
+npm run build:iife   # dist/nonoha-views.iife.js (global: NonohaViews)
 ```
 
 ## License

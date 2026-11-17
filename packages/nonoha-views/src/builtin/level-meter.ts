@@ -80,6 +80,7 @@ export const levelMeterView = defineView({
     {
       name: 'frames',
       accepts: ['f32', 'f32[?]', 'f32[?x?]', 'f64', 'f64[?]', 'f64[?x?]'],
+      delivery: 'every', // levels are measured over all samples
       description: 'Audio samples: rows = samples, last axis = channels (a plain f32 stream is mono)',
     },
   ],

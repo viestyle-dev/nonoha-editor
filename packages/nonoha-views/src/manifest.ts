@@ -51,6 +51,9 @@ export function viewDefinitionProblems(value: unknown): string[] {
       if (!input || !Array.isArray(input.accepts) || input.accepts.length === 0 || !input.accepts.every(isText)) {
         problems.push(`inputs[${i}].accepts must be a non-empty array of types`)
       }
+      if (input && input.delivery !== undefined && input.delivery !== 'every' && input.delivery !== 'latest') {
+        problems.push(`inputs[${i}].delivery must be "every" or "latest"`)
+      }
     })
   }
   if (view.settings !== undefined) {

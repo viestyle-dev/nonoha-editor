@@ -3,61 +3,37 @@
 import { Chip, Tooltip } from "@mui/material"
 import { WarningAmber } from "@mui/icons-material"
 import { enqueueSnackbar } from "notistack"
-import { useEffect, useRef, useState } from "react"
-import { EngineCapabilities, fetchEngineCapabilities } from "nonoha-client-js"
+import { useEffect, useRef } from "react"
 
 import { AboutDialog, EngineInfo } from "@/src/components/about-dialog"
 import { describeCompat, engineCompatStatus, isCompatWarning } from "@/src/lib/engine-compat"
 import { useInspector, useInspectorState } from "@/src/inspector/inspector-store"
+import { useEngineCapabilitiesFor } from "@/src/stores/engine-capabilities-store"
 
 /**
- * Engine version, compatibility and inspector state for the About dialog.
- * Inside a graph page the inspector store already holds the capabilities;
- * elsewhere (graph list) they are fetched once.
+ * Engine version, compatibility and inspector state for the About dialog:
+ * the engine's capabilities, plus this tab's inspector inside a graph page.
  */
 export function useEngineInfo(engineGatewayUrl: string | undefined): EngineInfo {
+  const engine = useEngineCapabilitiesFor(engineGatewayUrl)
   const inspector = useInspector()
   const inspectorState = useInspectorState()
-  const [own, setOwn] = useState<{ caps: EngineCapabilities | null; status: "loading" | "none" | "error" | "ok" }>({
-    caps: null,
-    status: "loading",
-  })
-  const useOwn = !inspector || inspector.engineGatewayUrl !== engineGatewayUrl
-
-  useEffect(() => {
-    if (!useOwn || !engineGatewayUrl) return
-    let cancelled = false
-    setOwn({ caps: null, status: "loading" })
-    fetchEngineCapabilities(engineGatewayUrl)
-      .then(caps => !cancelled && setOwn({ caps, status: caps ? "ok" : "none" }))
-      .catch(() => !cancelled && setOwn({ caps: null, status: "error" }))
-    return () => {
-      cancelled = true
-    }
-  }, [useOwn, engineGatewayUrl])
-
-  if (useOwn) {
-    const version = own.caps?.engine
-    return {
-      url: engineGatewayUrl,
-      version,
-      compat: engineGatewayUrl ? engineCompatStatus(version, own.status) : "loading",
-      inspector: own.caps ? (own.caps.inspector?.enabled ? "available" : "off in this engine") : undefined,
-    }
-  }
-  const { engineVersion, capabilities, supported, enabled, status } = inspectorState
+  const capabilities = engine.status === "ok" ? engine.capabilities : null
+  const version = capabilities?.engine
+  const inPage = inspector?.engineGatewayUrl === engineGatewayUrl
   return {
     url: engineGatewayUrl,
-    version: engineVersion,
-    compat: engineCompatStatus(engineVersion, capabilities),
-    inspector:
-      capabilities !== "ok"
-        ? undefined
-        : !supported
-          ? "off in this engine"
-          : !enabled
+    version,
+    compat: engineGatewayUrl ? engineCompatStatus(version, engine.status) : "loading",
+    inspector: !capabilities
+      ? undefined
+      : !capabilities.inspector?.enabled
+        ? "off in this engine"
+        : !inPage
+          ? "available"
+          : !inspectorState.enabled
             ? "off in this tab"
-            : status.state,
+            : inspectorState.status.state,
   }
 }
 
@@ -122,6 +98,11 @@ export function EngineAboutControls({
   onClose: () => void
 }) {
   const info = useEngineInfo(engineGatewayUrl)
+  // Opening the dialog reads the engine's details again (it may have been restarted).
+  const { refresh } = useEngineCapabilitiesFor(engineGatewayUrl)
+  useEffect(() => {
+    if (open) refresh()
+  }, [open, refresh])
   return (
     <>
       <EngineCompatChip info={info} onClick={onOpen} />

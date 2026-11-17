@@ -189,17 +189,16 @@ export function defaultViewTheme(isDark = true): ViewTheme {
       }
 }
 
-/** Latest value, strided to about 1 MiB (images, grids). */
-const LARGE_WATCH: Readonly<WatchOptions> = { intervalMs: 66, batch: 'last', maxBytes: 1024 * 1024, autoStride: [0, 1] }
-/** Every row since the last sample (series, spectra). */
-const ROWS_WATCH: Readonly<WatchOptions> = { intervalMs: 66, batch: 'since', maxBytes: 512 * 1024 }
+/** "every": every row since the last sample, within a byte budget. */
+const EVERY_WATCH: Readonly<WatchOptions> = { intervalMs: 66, batch: 'since', maxBytes: 512 * 1024 }
+/** "latest": the latest value (every row of the latest dispatch), strided to about 1 MiB (images, grids). */
+const LATEST_WATCH: Readonly<WatchOptions> = { intervalMs: 66, batch: 'all', maxBytes: 1024 * 1024, autoStride: [0, 1] }
 
 /**
- * Inspector options for feeding a view input from an internal port: inputs
- * that accept 2-D or larger shapes take the latest value, strided; others
- * every row. Hosts share it so a view gets the same data everywhere.
+ * Inspector options that give a view input what it declares it needs
+ * (`delivery`), for hosts feeding it from an internal port. Hosts share it
+ * so a view gets the same data everywhere.
  */
 export function watchOptionsFor(input: ViewInputSpec): WatchOptions {
-  const large = input.accepts.some(pattern => /\[[^\]]*x[^\]]*\]/.test(pattern) || pattern.endsWith('[*]'))
-  return large ? LARGE_WATCH : ROWS_WATCH
+  return input.delivery === 'latest' ? LATEST_WATCH : EVERY_WATCH
 }
