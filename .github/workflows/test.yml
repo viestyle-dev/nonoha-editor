@@ -32,3 +32,15 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Build IIFEs
+        run: npm run build:iife
+
+      - name: Keep the IIFEs apart (views get their clients from the host)
+        run: |
+          if grep -qE "GraphClient|InspectorClient" packages/nonoha-views/dist/nonoha-views.iife.js; then
+            echo "nonoha-views.iife.js bundles client code"; exit 1
+          fi
+          if grep -qE "createViewHost|defineView" packages/nonoha-client-js/dist/nonoha-client.iife.js; then
+            echo "nonoha-client.iife.js bundles view code"; exit 1
+          fi

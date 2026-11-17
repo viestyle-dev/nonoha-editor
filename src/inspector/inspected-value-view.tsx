@@ -3,14 +3,8 @@
 import { css } from "@emotion/react"
 import { Typography } from "@mui/material"
 import { memo, useEffect, useMemo, useRef, useState } from "react"
-import {
-  InspectorPortRef,
-  interpretValue,
-  PortDataType,
-  PortValue,
-  ValueKind,
-  WatchOptions,
-} from "nonoha-client-js"
+import { InspectorPortRef, PortDataType, PortValue, WatchOptions } from "nonoha-client-js"
+import { interpretValue, type ValueKind } from "./interpret"
 
 import { useChartTheme } from "@/src/hooks/use-chart-theme"
 import { useImageFramePainter } from "@/src/hooks/use-image-frame-painter"

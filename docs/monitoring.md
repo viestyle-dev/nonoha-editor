@@ -67,14 +67,27 @@ against the components' real handle ids.
 
 ## Views
 
-- Contract: `packages/nonoha-client-js/src/view-sdk.ts` (`sdk: 1`).
-- Catalog: `src/views/view-catalog.tsx` loads `GET /node-flow/plugins`,
-  each plugin's `static/views/manifest.json`, and the client's
-  `builtinViews`. Keys: `<plugin id>/<view id>` or `builtin/<view id>`.
+A view is a read-only display a plugin ships in `static/views/` (or a
+built-in one). The contract, the host and the catalog live in
+`packages/nonoha-views` (its README is the reference); the editor only
+hosts views.
+
+- Catalog: `src/views/view-catalog.tsx` wraps `loadViewCatalog`: the
+  built-in views, then each plugin's `static/views/manifest.json` from the
+  plugin list (`fetchPlugins` of nonoha-client-js). Keys:
+  `<plugin id>/<view id>` or `builtin/<view id>`. Built-ins are listed
+  before the plugins load.
 - Node: `PluginViewNode` loads the module (`loadView`), mounts it with
-  `createViewHost`, makes one input handle per view input, and shows the
-  view's origin. A missing view keeps its settings and shows a placeholder.
-- Add menu → "Views"; dropping an edge from an engine output on the canvas
-  offers "Show in …" for views that accept its type (dashed edge).
-- `portHints` in manifests set defaults such as `colorOrder: "bgr"` for a
-  plugin's image outputs.
+  `createViewHost`, makes one input handle per view input and feeds it
+  through `useEditorInput` (dashed edges use `watchOptionsFor(input)`, the
+  same options as apps). Settings are edited as text and resolved by the
+  host (`min`/`max`, `enum`, defaults). A missing view keeps its settings
+  and shows a placeholder.
+- Add menu → "Views": a view input shows "one of" its accepted types.
+  Dropping an edge from an engine output on the canvas offers "Show in …"
+  for views that accept its type, views whose `suits` name that output
+  first.
+- `public/editor-nodes.json` lists the built-in views (`builtinViews`) for
+  tools and AI agents; `specs.test.ts` fails when it differs from the
+  definitions.
+- Views never write to a graph. Inputs to a graph are editor input nodes.

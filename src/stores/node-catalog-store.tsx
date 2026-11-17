@@ -10,8 +10,11 @@ import {
 export interface CatalogPortInfo {
   name: string
   description: string
+  /** Type of each value of the port. */
   types: string[]
   value_names?: (string | null)[]
+  /** Types the port takes when it is one value of any of these (a view input); `types` is then []. */
+  accepts?: string[]
 }
 
 export interface CatalogPropertyInfo {

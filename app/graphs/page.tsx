@@ -123,15 +123,15 @@ import { InspectorStatusButton } from "@/src/inspector/inspector-status-button"
 import { EngineAboutControls } from "@/src/components/engine-about"
 import { EnvSettingsDialog, EnvSettingsMenuItem } from "@/src/components/env-settings-dialog"
 import { ViewCatalogProvider, useViewCatalog } from "@/src/views/view-catalog"
-import { builtinViews, type DefinedView } from "nonoha-client-js"
+import { builtinViews, type DefinedView } from "nonoha-views"
 import { EDITOR_NODE_SPEC_BY_TYPE } from "@/src/editor-nodes/specs"
 import { findFreeSpot, rectsOverlap, type Rect } from "@/src/lib/graph/free-spot"
-import type { ValueKind } from "nonoha-client-js"
+import type { ValueKind } from "@/src/inspector/interpret"
 
 const GRAPH_EDIT_DISABLED =
   process.env.NEXT_PUBLIC_GRAPH_EDIT_DISABLED == "true"
 
-/** Built-in views of nonoha-client-js ("builtin/<id>" in the view catalog). */
+/** Built-in views of nonoha-views ("builtin/<id>" in the view catalog). */
 const BUILTIN_VIEWS: readonly DefinedView[] = builtinViews
 
 /** Add-menu entries for the views in the catalog (one PluginViewNode prototype each). */
@@ -144,7 +144,7 @@ function ViewPrototypesBridge({
   graphEndpoint: GraphEndpoint | undefined
   editorModelUpdater: EditorModelUpdater | undefined
   onChange: (prototypes: NodePrototype[]) => void
-  catalogRef: { current: Map<string, { title: string; size?: { width: number; height: number } }> }
+  catalogRef: { current: ReadonlyMap<string, { title: string; size?: { width: number; height: number } }> }
 }) {
   const catalog = useViewCatalog()
   catalogRef.current = catalog.entries
@@ -167,7 +167,7 @@ function ViewPrototypesBridge({
           label: entry.title,
           category: "Views",
           description: `${entry.description}${entry.source === "plugin" ? ` (${entry.pluginId})` : " (built-in)"}`,
-          inputs: entry.inputs.map(i => ({ name: i.name, types: i.accepts, description: i.description ?? "" })),
+          inputs: entry.inputs.map(i => ({ name: i.name, types: [], accepts: i.accepts, description: i.description ?? "" })),
         },
       })
     })
@@ -713,7 +713,7 @@ function PageInner() {
 
   // Edge dropped on the canvas -> "Show in <view>": a view node at the drop
   // point, fed by a dashed (inspector) edge from the dragged output.
-  const viewCatalogRef = useRef<Map<string, { title: string; size?: { width: number; height: number } }>>(new Map())
+  const viewCatalogRef = useRef<ReadonlyMap<string, { title: string; size?: { width: number; height: number } }>>(new Map())
   const handleEdgeDropView = useCallback(
     (viewKey: string, input: string) => {
       const drop = edgeDropMenuStateRef.current

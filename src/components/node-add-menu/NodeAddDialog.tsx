@@ -299,7 +299,7 @@ export function NodeAddDialog({
     // Editor nodes
     for (const proto of nodePrototypes) {
       const meta = proto.catalog
-        ? { ...proto.catalog, outputs: [] as { name: string; types: string[]; description: string }[] }
+        ? { ...proto.catalog, outputs: [] as CatalogPortInfo[] }
         : EDITOR_NODE_CATALOG[proto.type]
       result.push({
         key: `editor:${proto.catalog?.key ?? proto.type}`,

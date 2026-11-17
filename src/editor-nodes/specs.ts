@@ -7,6 +7,8 @@
  * menu catalog and the node prototypes are all derived from it here.
  */
 
+import type { ViewMetadata } from "nonoha-views"
+
 import editorNodes from "@/public/editor-nodes.json"
 
 export interface EditorPortSpec {
@@ -39,6 +41,8 @@ export interface EditorNodeSpec {
 export interface EditorNodesDocument {
   schema: number
   nodes: EditorNodeSpec[]
+  /** The views built into the editor ("builtin/<id>"), listed for tools; the definitions in nonoha-views are the source. */
+  builtinViews: ViewMetadata[]
 }
 
 // JSON imports infer a union per entry; the specs test verifies the shape.

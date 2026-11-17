@@ -13,7 +13,8 @@ import {
 } from "@mui/material"
 import { Close, Pause, PlayArrow, PushPin } from "@mui/icons-material"
 import { useCallback, useMemo, useState } from "react"
-import { alternativeKinds, InspectorPortRef, ValueKind } from "nonoha-client-js"
+import type { InspectorPortRef } from "nonoha-client-js"
+import { alternativeKinds, type ValueKind } from "./interpret"
 
 import { useThemeStore } from "@/src/stores/theme-store"
 import type { ColorOrder } from "@/src/lib/image-frame"

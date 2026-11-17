@@ -20,7 +20,7 @@ export interface NodePrototype {
     label: string
     category: string
     description: string
-    inputs: { name: string; types: string[]; description: string }[]
+    inputs: CatalogPortInfo[]
   }
   style?: {
     width?: number

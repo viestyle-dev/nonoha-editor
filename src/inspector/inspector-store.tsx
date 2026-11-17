@@ -16,11 +16,11 @@ import {
   InspectorClient,
   InspectorPortRef,
   InspectorStatus,
-  ValueKind,
   WatchCallbacks,
   WatchHandle,
   WatchOptions,
 } from "nonoha-client-js"
+import type { ValueKind } from "./interpret"
 
 /**
  * The editor's side of the engine inspector: one InspectorClient per open

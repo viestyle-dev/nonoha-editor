@@ -9,7 +9,10 @@ const nextConfig = {
     basePath: basePath,
     output: "export",
     trailingSlash: true,
-    transpilePackages: ['nonoha-client-js'],
+    transpilePackages: ['nonoha-client-js', 'nonoha-views'],
+    eslint: {
+        dirs: ['app', 'src', 'packages/nonoha-views/src'],
+    },
     env: {
         NEXT_PUBLIC_EDITOR_VERSION: editorVersion,
     },

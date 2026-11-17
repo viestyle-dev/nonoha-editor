@@ -1,73 +1,28 @@
 "use client"
 
 import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react"
-import {
-  DefinedView,
-  fetchPlugins,
-  fetchViewManifest,
-  inputAccepts,
-  pluginViewsBase,
-  ViewInputSpec,
-  ViewManifest,
-  ViewSettingSpec,
-  ViewTheme,
-} from "nonoha-client-js"
+import { fetchPlugins } from "nonoha-client-js"
+import { builtinViewEntry, inputAccepts, loadViewCatalog, type DefinedView, type ViewEntry, type ViewTheme } from "nonoha-views"
 
 import type { ChartTheme } from "@/src/lib/chart-theme"
 import { useInspectorState } from "@/src/inspector/inspector-store"
 
+export type { ViewEntry } from "nonoha-views"
+
 /**
- * Views available to this editor tab: plugin views (static/views of the
- * plugins the engine loaded) and the built-in views of nonoha-client-js.
- * Keys are "<plugin id>/<view id>" or "builtin/<view id>".
+ * Views available to this editor tab: the built-in views and the views of
+ * the plugins the engine loaded. Keys are "<plugin id>/<view id>" or
+ * "builtin/<view id>".
  */
-export interface ViewEntry {
-  key: string
-  source: "plugin" | "builtin"
-  pluginId?: string
-  pluginVersion?: string | null
-  title: string
-  description: string
-  inputs: ViewInputSpec[]
-  settings: Record<string, ViewSettingSpec>
-  size?: { width: number; height: number }
-  suits: { node: string; port: string }[]
-  /** Module URL (plugin views) or the definition itself (built-ins). */
-  moduleUrl?: string
-  definition?: DefinedView
-}
-
-export interface PortHint {
-  node: string
-  port: string
-  colorOrder?: "rgb" | "bgr"
-}
-
 interface ViewCatalog {
+  /** Plugin views have been looked up (built-ins are always there). */
   loaded: boolean
-  entries: Map<string, ViewEntry>
-  /** Hints from plugin manifests, keyed "<node type>.<port>". */
-  portHints: Map<string, PortHint>
+  entries: ReadonlyMap<string, ViewEntry>
 }
 
-const EMPTY: ViewCatalog = { loaded: false, entries: new Map(), portHints: new Map() }
-const ViewCatalogContext = createContext<ViewCatalog>(EMPTY)
+const ViewCatalogContext = createContext<ViewCatalog>({ loaded: false, entries: new Map() })
 
 export const useViewCatalog = () => useContext(ViewCatalogContext)
-
-function builtinEntries(builtins: readonly DefinedView[]): ViewEntry[] {
-  return builtins.map(view => ({
-    key: `builtin/${view.id}`,
-    source: "builtin" as const,
-    title: view.title ?? view.id,
-    description: view.description ?? "",
-    inputs: view.inputs,
-    settings: view.settings ?? {},
-    size: view.size,
-    suits: [],
-    definition: view,
-  }))
-}
 
 export function ViewCatalogProvider({
   engineGatewayUrl,
@@ -79,60 +34,34 @@ export function ViewCatalogProvider({
   children: ReactNode
 }) {
   const { pluginStatic, capabilities } = useInspectorState()
-  const [plugins, setPlugins] = useState<{ entries: ViewEntry[]; hints: PortHint[] } | null>(null)
+  const [loaded, setLoaded] = useState<ReadonlyMap<string, ViewEntry> | null>(null)
 
   useEffect(() => {
+    setLoaded(null)
     if (!engineGatewayUrl || capabilities === "loading") return
-    if (!pluginStatic) {
-      setPlugins({ entries: [], hints: [] })
-      return
-    }
     let cancelled = false
     ;(async () => {
-      const entries: ViewEntry[] = []
-      const hints: PortHint[] = []
-      const list = await fetchPlugins(engineGatewayUrl).catch(() => [])
-      await Promise.all(
-        list.map(async plugin => {
-          const base = pluginViewsBase(engineGatewayUrl, plugin)
-          if (!base) return
-          const manifest: ViewManifest | null = await fetchViewManifest(base, plugin.rev).catch(() => null)
-          if (!manifest) return
-          for (const view of manifest.views ?? []) {
-            entries.push({
-              key: `${plugin.id}/${view.id}`,
-              source: "plugin",
-              pluginId: plugin.id,
-              pluginVersion: plugin.version,
-              title: view.title ?? view.id,
-              description: view.description ?? "",
-              inputs: view.inputs ?? [],
-              settings: view.settings ?? {},
-              size: view.size,
-              suits: view.suits ?? [],
-              moduleUrl: `${base}${view.module}${plugin.rev ? `?rev=${plugin.rev}` : ""}`,
-            })
-          }
-          for (const hint of manifest.portHints ?? []) hints.push(hint)
-        }),
-      )
-      if (!cancelled) setPlugins({ entries, hints })
+      const plugins = pluginStatic ? await fetchPlugins(engineGatewayUrl).catch(() => []) : []
+      const catalog = await loadViewCatalog(engineGatewayUrl, plugins, {
+        builtins,
+        onError: (pluginId, error) => console.warn(`[views] ${pluginId}:`, error),
+      })
+      if (!cancelled) setLoaded(catalog)
     })()
     return () => {
       cancelled = true
     }
-  }, [engineGatewayUrl, pluginStatic, capabilities])
+  }, [engineGatewayUrl, pluginStatic, capabilities, builtins])
 
   const value = useMemo<ViewCatalog>(() => {
+    if (loaded) return { loaded: true, entries: loaded }
     const entries = new Map<string, ViewEntry>()
-    for (const entry of builtinEntries(builtins)) entries.set(entry.key, entry)
-    const portHints = new Map<string, PortHint>()
-    if (plugins) {
-      for (const entry of plugins.entries) entries.set(entry.key, entry)
-      for (const hint of plugins.hints) portHints.set(`${hint.node}.${hint.port}`, hint)
+    for (const view of builtins) {
+      const entry = builtinViewEntry(view)
+      entries.set(entry.key, entry)
     }
-    return { loaded: plugins !== null, entries, portHints }
-  }, [builtins, plugins])
+    return { loaded: false, entries }
+  }, [builtins, loaded])
 
   return <ViewCatalogContext.Provider value={value}>{children}</ViewCatalogContext.Provider>
 }

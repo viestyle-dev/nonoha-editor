@@ -1,0 +1,35 @@
+{
+  "name": "nonoha-views",
+  "version": "1.1.0-dev.0",
+  "description": "nonoha views: the contract between view modules and their hosts, hosting, the view catalog and built-in views",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "nonoha-view-manifest": "./bin/view-manifest.mjs"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "build:iife": "node scripts/build-iife.mjs",
+    "dev": "tsc -b -w",
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "nonoha-client-js": "*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.0.0",
+    "vitest": "2.1.9"
+  }
+}

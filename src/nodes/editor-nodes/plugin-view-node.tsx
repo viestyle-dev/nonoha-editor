@@ -25,16 +25,17 @@ import {
 } from "@mui/material"
 import SettingsIcon from "@mui/icons-material/Settings"
 import { css } from "@emotion/react"
+import type { GraphEndpoint } from "nonoha-client-js"
 import {
   createViewHost,
-  DefinedView,
-  GraphEndpoint,
   loadView,
-  ViewHost,
-  ViewInputSpec,
-  ViewSettingSpec,
-  WatchOptions,
-} from "nonoha-client-js"
+  resolveSettings,
+  watchOptionsFor,
+  type DefinedView,
+  type ViewHost,
+  type ViewInputSpec,
+  type ViewSettingSpec,
+} from "nonoha-views"
 
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { useThemeStore } from "@/src/stores/theme-store"
@@ -42,7 +43,7 @@ import { NodeHandleLeft } from "@/src/components/node-handle"
 import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { useChartTheme } from "@/src/hooks/use-chart-theme"
-import { IMAGE_WATCH, useEditorInput } from "@/src/hooks/use-editor-input"
+import { useEditorInput } from "@/src/hooks/use-editor-input"
 import { useViewCatalog, viewThemeFrom } from "@/src/views/view-catalog"
 
 export type PluginViewNode = Node<{
@@ -56,13 +57,6 @@ export type PluginViewNode = Node<{
   }
 }>
 
-/** Inputs with 2-D or larger shapes (images, grids) take the latest value, strided; others every row. */
-const ROWS_WATCH: WatchOptions = { intervalMs: 66, batch: "since", maxBytes: 512 * 1024 }
-function watchFor(input: ViewInputSpec): WatchOptions {
-  const large = input.accepts.some(pattern => /\[[^\]]*x[^\]]*\]/.test(pattern) || pattern.endsWith("[*]"))
-  return large ? IMAGE_WATCH : ROWS_WATCH
-}
-
 /** One input handle of the view, fed by a solid or dashed edge. */
 const ViewInput = memo(function ViewInput({
   input,
@@ -74,7 +68,7 @@ const ViewInput = memo(function ViewInput({
   hostRef: { current: ViewHost | null }
 }) {
   const name = input.name
-  const options = useMemo(() => watchFor(input), [input])
+  const options = useMemo(() => watchOptionsFor(input), [input])
   useEditorInput(graphEndpoint, name, values => hostRef.current?.deliver(name, values), options)
   return (
     <Tooltip title={`${input.description ?? name}\n[${input.accepts.join(", ")}]`} placement="left">
@@ -123,9 +117,14 @@ function SettingField({
       helperText={spec.description}
       defaultValue={value ?? ""}
       type={spec.type === "number" ? "number" : "text"}
+      inputProps={spec.type === "number" ? { min: spec.min, max: spec.max } : undefined}
       onBlur={e => {
+        // Store what the view gets (parsed, within min/max); empty = default.
         const raw = e.target.value
-        onChange(spec.type === "number" ? (raw === "" ? undefined : Number(raw)) : raw)
+        if (raw === "") return onChange(undefined)
+        const resolved = resolveSettings({ [name]: spec }, { [name]: raw })[name]
+        e.target.value = resolved === undefined ? "" : String(resolved)
+        onChange(resolved)
       }}
     />
   )
@@ -133,7 +132,7 @@ function SettingField({
 
 /**
  * Editor node that hosts a view (a plugin's static/views module or a
- * built-in of nonoha-client-js). Inputs come from the view's manifest.
+ * built-in of nonoha-views). Inputs come from the view's manifest.
  * A missing view keeps its settings and shows a placeholder.
  */
 export const PluginViewNode = memo((props: NodeProps<PluginViewNode>) => {
@@ -145,6 +144,8 @@ export const PluginViewNode = memo((props: NodeProps<PluginViewNode>) => {
   const viewKey = props.data.nodeData?.view
   const settings = props.data.nodeData?.settings
   const entry = viewKey ? catalog.entries.get(viewKey) : undefined
+  // Settings as the view gets them, shown in the settings panel.
+  const resolvedSettings = useMemo(() => resolveSettings(entry?.settings, settings), [entry, settings])
   const [titleEditing, setTitleEditing] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [definition, setDefinition] = useState<DefinedView | null>(null)
@@ -166,13 +167,8 @@ export const PluginViewNode = memo((props: NodeProps<PluginViewNode>) => {
     setDefinition(null)
     setError(null)
     if (!entry) return
-    if (entry.definition) {
-      setDefinition(entry.definition)
-      return
-    }
-    if (!entry.moduleUrl) return
     let cancelled = false
-    loadView(entry.moduleUrl)
+    loadView(entry)
       .then(view => !cancelled && setDefinition(view))
       .catch(e => !cancelled && setError(String(e?.message ?? e)))
     return () => {
@@ -376,7 +372,7 @@ export const PluginViewNode = memo((props: NodeProps<PluginViewNode>) => {
               key={name}
               name={name}
               spec={spec}
-              value={settings?.[name] ?? spec.default}
+              value={resolvedSettings[name]}
               onChange={value => changeSetting(name, value)}
             />
           ))}

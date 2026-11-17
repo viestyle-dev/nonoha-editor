@@ -1,7 +1,8 @@
 import { readFileSync, readdirSync } from "fs"
 import path from "path"
 import { describe, expect, it } from "vitest"
-import { EDITOR_NODE_SPECS } from "@/src/editor-nodes/specs"
+import { builtinViews, viewMetadataOf } from "nonoha-views"
+import { EDITOR_NODE_SPECS, EDITOR_NODES_DOCUMENT } from "@/src/editor-nodes/specs"
 
 const ROOT = path.resolve(__dirname, "../../..")
 const NODES_DIR = path.join(ROOT, "src/nodes/editor-nodes")
@@ -74,5 +75,11 @@ describe("editor-nodes.json", () => {
         }
       }
     }
+  })
+
+  it("lists the built-in views as their definitions declare them", () => {
+    // JSON drops absent fields, as in the file.
+    const declared = JSON.parse(JSON.stringify(builtinViews.map(viewMetadataOf)))
+    expect(EDITOR_NODES_DOCUMENT.builtinViews).toEqual(declared)
   })
 })
