@@ -101,6 +101,10 @@ export class EditorInspector {
   private state: InspectorUiState
   private previewSlots = 0
   private readonly slotListeners = new Set<Listener>()
+  /** Why a watched port shows nothing (too_large, gone, refused), until its next sample. */
+  private readonly problems = new Map<string, string>()
+  private readonly problemListeners = new Map<string, Set<Listener>>()
+  private readonly watchCounts = new Map<string, number>()
 
   constructor(engineGatewayUrl: string, graphName: string) {
     this.engineGatewayUrl = engineGatewayUrl
@@ -123,6 +127,7 @@ export class EditorInspector {
     } else if (this.client) {
       this.client.close()
       this.client = null
+      this.clearProblems()
       this.setState({ status: { state: "idle", reasons: [] } })
     }
   }
@@ -132,6 +137,7 @@ export class EditorInspector {
     if (this.flushTimer !== null) clearTimeout(this.flushTimer)
     this.client?.close()
     this.client = null
+    this.clearProblems()
     this.pinHandler = null
     this.promoteHandler = null
   }
@@ -147,6 +153,7 @@ export class EditorInspector {
     } else {
       this.client?.close()
       this.client = null
+      this.clearProblems()
       this.setState({ status: { state: "idle", reasons: [] } })
     }
   }
@@ -251,28 +258,111 @@ export class EditorInspector {
 
   // --- in-node previews -------------------------------------------------------------
 
-  /** Take one of the MAX_PREVIEWS slots; false when all are in use. */
-  acquirePreviewSlot(): boolean {
+  /**
+   * Hold one of the MAX_PREVIEWS slots until the returned function is
+   * called: `onGranted(true)` now, or `false` now and `true` once another
+   * preview gives its slot back (taken once, not on every later release).
+   */
+  holdPreviewSlot(onGranted: (granted: boolean) => void): () => void {
+    let held = this.takePreviewSlot()
+    onGranted(held)
+    if (held) return () => this.givePreviewSlot()
+    const waiting: Listener = () => {
+      if (held || !this.takePreviewSlot()) return
+      held = true
+      this.slotListeners.delete(waiting)
+      onGranted(true)
+    }
+    this.slotListeners.add(waiting)
+    return () => {
+      this.slotListeners.delete(waiting)
+      if (held) this.givePreviewSlot()
+    }
+  }
+
+  private takePreviewSlot(): boolean {
     if (this.previewSlots >= MAX_PREVIEW_SLOTS) return false
     this.previewSlots++
     return true
   }
 
-  releasePreviewSlot(): void {
+  private givePreviewSlot(): void {
     if (this.previewSlots > 0) this.previewSlots--
     this.slotListeners.forEach(listener => listener())
   }
 
-  onPreviewSlotFreed(listener: Listener): () => void {
-    this.slotListeners.add(listener)
-    return () => this.slotListeners.delete(listener)
-  }
-
   // --- watches ---------------------------------------------------------------------
 
-  /** Watch a port; null while the inspector is off or unsupported. */
+  /**
+   * Watch a port; null while the inspector is off or unsupported. What the
+   * engine could not send for it (too_large, a port gone, a refused watch)
+   * becomes the port's problem (`usePortProblem`) until its next sample.
+   */
   watch(ref: InspectorPortRef, options: WatchOptions, callbacks: WatchCallbacks): WatchHandle | null {
-    return this.client?.watch(ref, options, callbacks) ?? null
+    const client = this.client
+    if (!client) return null
+    const key = portKey(ref)
+    const problems = this.problems
+    const handle = client.watch(ref, options, {
+      onSample: sample => {
+        if (problems.has(key)) this.setProblem(key, null)
+        callbacks.onSample(sample)
+      },
+      onInfo: callbacks.onInfo,
+      onGone: () => {
+        this.setProblem(key, "The port is gone (removed or replaced)")
+        callbacks.onGone?.()
+      },
+      onError: (code, message) => {
+        this.setProblem(key, code === "too_large" ? `Too large to show: ${message}` : message)
+        callbacks.onError?.(code, message)
+      },
+    })
+    this.watchCounts.set(key, (this.watchCounts.get(key) ?? 0) + 1)
+    let unwatched = false
+    return {
+      ref: handle.ref,
+      setInterval: handle.setInterval,
+      snapshot: handle.snapshot,
+      unwatch: () => {
+        if (unwatched) return
+        unwatched = true
+        handle.unwatch()
+        const left = (this.watchCounts.get(key) ?? 1) - 1
+        if (left > 0) this.watchCounts.set(key, left)
+        else {
+          this.watchCounts.delete(key)
+          this.setProblem(key, null) // nobody shows the port any more
+        }
+      },
+    }
+  }
+
+  problemOf(key: string): string | undefined {
+    return this.problems.get(key)
+  }
+
+  subscribeProblem(key: string, listener: Listener): () => void {
+    let set = this.problemListeners.get(key)
+    if (!set) this.problemListeners.set(key, (set = new Set()))
+    set.add(listener)
+    return () => {
+      set!.delete(listener)
+      if (set!.size === 0) this.problemListeners.delete(key)
+    }
+  }
+
+  private setProblem(key: string, problem: string | null): void {
+    if ((this.problems.get(key) ?? null) === problem) return
+    if (problem === null) this.problems.delete(key)
+    else this.problems.set(key, problem)
+    this.problemListeners.get(key)?.forEach(listener => listener())
+  }
+
+  private clearProblems(): void {
+    const keys = Array.from(this.problems.keys())
+    this.problems.clear()
+    for (const key of keys) this.problemListeners.get(key)?.forEach(listener => listener())
   }
 }
 
@@ -322,6 +412,24 @@ export function useInspectorState(): InspectorUiState {
     inspector ? inspector.subscribeState : noopSubscribe,
     inspector ? inspector.getState : () => NO_STATE,
     () => NO_STATE,
+  )
+}
+
+/**
+ * Why a watched port shows nothing (too large to show, gone, refused), or
+ * undefined. Re-renders only when that port's problem changes.
+ */
+export function usePortProblem(ref: InspectorPortRef | null): string | undefined {
+  const inspector = useInspector()
+  const key = ref ? portKey(ref) : ""
+  const subscribe = useCallback(
+    (listener: Listener) => (inspector && key ? inspector.subscribeProblem(key, listener) : () => {}),
+    [inspector, key],
+  )
+  return useSyncExternalStore(
+    subscribe,
+    () => (inspector && key ? inspector.problemOf(key) : undefined),
+    () => undefined,
   )
 }
 

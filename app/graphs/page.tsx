@@ -182,6 +182,7 @@ const PIN_TARGETS: Partial<Record<ValueKind, { type: string; handle: string }>> 
   bytes: { type: "ImageDisplayNode", handle: "image" },
   scalar: { type: "FastTimeSeriesGraphNode", handle: "series" },
   vector: { type: "FastLineChartGraphNode", handle: "traces" },
+  series: { type: "FastTimeSeriesGraphNode", handle: "series" }, // every item, as a time series
 }
 
 /**

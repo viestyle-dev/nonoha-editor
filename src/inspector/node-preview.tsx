@@ -91,13 +91,7 @@ export const NodePreview = memo(function NodePreview({ nodeId, port }: { nodeId:
 
   useEffect(() => {
     if (!inspector || !visible) return
-    if (!inspector.acquirePreviewSlot()) {
-      setGranted(false)
-      // Retry when another preview leaves the screen.
-      return inspector.onPreviewSlotFreed(() => setGranted(inspector.acquirePreviewSlot()))
-    }
-    setGranted(true)
-    return () => inspector.releasePreviewSlot()
+    return inspector.holdPreviewSlot(setGranted)
   }, [inspector, visible])
 
   const live = Boolean(supported && enabled)

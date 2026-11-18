@@ -1,10 +1,16 @@
 import type { PortValue, WatchOptions } from 'nonoha-client-js'
-import type { DefinedView, ViewContext, ViewInputSpec, ViewInstance, ViewSettingSpec, ViewTheme } from './sdk'
+import type { DefinedView, ValuesInfo, ViewContext, ViewInputSpec, ViewInstance, ViewSettingSpec, ViewTheme } from './sdk'
 import { VIEW_SDK_VERSION } from './sdk'
 
+/** Values delivered whole (a graph output port): one shared object, nothing allocated per delivery. */
+const WHOLE: ValuesInfo = Object.freeze({ steps: Object.freeze([]) as readonly (readonly number[])[], gap: false })
+
 export interface ViewHost {
-  /** Push values for one input (valid during the call; the view copies what it keeps). */
-  deliver(input: string, values: PortValue[]): void
+  /**
+   * Push values for one input (valid during the call; the view copies what
+   * it keeps). `info`: how a sampling host reduced them; omitted, they are whole.
+   */
+  deliver(input: string, values: PortValue[], info?: ValuesInfo): void
   resize(width: number, height: number): void
   setSettings(settings: Record<string, unknown>): void
   setTheme(theme: ViewTheme): void
@@ -62,7 +68,7 @@ export function resolveSettings(
 /** Mount a view into `element`; the host feeds it values and size/theme/settings changes. */
 export function createViewHost(view: DefinedView, element: HTMLElement, options: ViewHostOptions): ViewHost {
   if (view.sdk !== VIEW_SDK_VERSION) throw new Error(`view "${view.id}" needs view SDK ${view.sdk}, host has ${VIEW_SDK_VERSION}`)
-  const listeners = new Map<string, ((values: PortValue[]) => void)[]>()
+  const listeners = new Map<string, ((values: PortValue[], info: ValuesInfo) => void)[]>()
   const report = options.onError ?? ((error: unknown) => console.error(`[view ${view.id}]`, error))
   let settings = resolveSettings(view.settings, options.settings)
   let theme = options.theme
@@ -122,12 +128,12 @@ export function createViewHost(view: DefinedView, element: HTMLElement, options:
   }
 
   return {
-    deliver(input, values) {
+    deliver(input, values, info = WHOLE) {
       const list = listeners.get(input)
       if (!list) return
       for (let i = 0; i < list.length; ++i) {
         try {
-          list[i](values)
+          list[i](values, info)
         } catch (error) {
           report(error)
         }

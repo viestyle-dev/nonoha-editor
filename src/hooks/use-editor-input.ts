@@ -2,7 +2,9 @@
 
 import { useHandleConnections } from "@xyflow/react"
 import { useEffect, useMemo, useRef } from "react"
+import { SampleFlag } from "nonoha-client-js"
 import type { GraphEndpoint, InspectorPortRef, PortValue, WatchOptions } from "nonoha-client-js"
+import type { ValuesInfo } from "nonoha-views"
 
 import { getNodeType } from "@/src/api/graph-api"
 import { useInspector, useInspectorState } from "@/src/inspector/inspector-store"
@@ -37,7 +39,8 @@ export interface EditorInputOptions {
 export function useEditorInput(
   graphEndpoint: GraphEndpoint | undefined,
   handleId: string,
-  onValues: (values: PortValue[]) => void,
+  /** `info`: how a dashed edge's sampled values were reduced (none for a solid edge: values are whole). */
+  onValues: (values: PortValue[], info?: ValuesInfo) => void,
   inspectorOptions: WatchOptions = DEFAULT_WATCH,
   options: EditorInputOptions = {},
 ): EditorInputSource {
@@ -89,9 +92,13 @@ export function useEditorInput(
       })
     }
     if (source.kind === "inspector" && inspector && inspectorLive) {
+      // Reused for every sample: how the values were reduced (views map coordinates with it)
+      const info: { steps: readonly (readonly number[])[]; gap: boolean } = { steps: [], gap: false }
       const handle = inspector.watch(source.ref, optionsRef.current, {
         onSample: sample => {
-          if (sample.values) onValuesRef.current(sample.values)
+          info.steps = sample.steps
+          info.gap = (sample.flags & SampleFlag.Gap) !== 0
+          onValuesRef.current(sample.values, info)
         },
       })
       return () => handle?.unwatch()
@@ -104,9 +111,9 @@ export function useEditorInput(
 
 const DEFAULT_WATCH: WatchOptions = { intervalMs: 100, batch: "since", maxBytes: 512 * 1024 }
 
-/** Options for image-like inputs: latest frame only, strided to fit. */
+/** Options for image-like inputs: the latest frame, strided when it does not fit. */
 export const IMAGE_WATCH: WatchOptions = { intervalMs: 66, batch: "last", maxBytes: 1024 * 1024, autoStride: [0, 1] }
-/** Options for array snapshots (spectra, feature vectors): latest row. */
+/** Options for array snapshots (spectra, feature vectors): the last item. */
 export const SNAPSHOT_WATCH: WatchOptions = { intervalMs: 100, batch: "last", maxBytes: 256 * 1024, autoStride: [0] }
-/** Options for latest-value readouts (numbers, bytes, colors): latest row, never strided. */
-export const LATEST_WATCH: WatchOptions = { intervalMs: 100, batch: "last" }
+/** Options for readouts of the latest value (numbers, bytes, colors): the last item, never strided. */
+export const READOUT_WATCH: WatchOptions = { intervalMs: 100, batch: "last" }

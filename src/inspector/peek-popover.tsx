@@ -26,6 +26,7 @@ const KIND_LABELS: Record<ValueKind, string> = {
   bytes: "Bytes",
   scalar: "Number",
   vector: "Plot",
+  series: "Waveform",
   grid: "Grid",
   bool: "Bool",
   text: "Text",
@@ -33,7 +34,7 @@ const KIND_LABELS: Record<ValueKind, string> = {
 }
 
 /** Kinds that have a display node to pin to. */
-export const PINNABLE: ReadonlySet<ValueKind> = new Set<ValueKind>(["image", "bytes", "scalar", "vector"])
+export const PINNABLE: ReadonlySet<ValueKind> = new Set<ValueKind>(["image", "bytes", "scalar", "vector", "series"])
 
 export function colorOrderKey(graph: string, ref: InspectorPortRef) {
   return `nonoha-editor:color-order:${graph}:${ref.node}.${ref.dir}.${ref.port}`

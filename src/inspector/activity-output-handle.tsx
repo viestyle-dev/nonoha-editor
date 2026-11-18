@@ -11,33 +11,10 @@ import { useInspector, useInspectorState, usePortActivity } from "@/src/inspecto
 import { PeekPopover } from "@/src/inspector/peek-popover"
 import { formatNumber } from "@/src/inspector/value-renderers"
 
-// numpy dtype.str (without byte order) -> nonoha type name
-const NUMPY_TYPES: Record<string, string> = {
-  b1: "bool",
-  i1: "i8",
-  u1: "u8",
-  i2: "i16",
-  u2: "u16",
-  i4: "i32",
-  u4: "u32",
-  i8: "i64",
-  u8: "u64",
-  f4: "f32",
-  f8: "f64",
-  c8: "c64",
-  c16: "c128",
-}
-
-function typeName(dtype: string | null): string {
-  if (!dtype) return "?"
-  if (dtype[0] === "U" || dtype[0] === "S" || dtype[0] === "O") return "str"
-  return NUMPY_TYPES[dtype] ?? dtype
-}
-
-/** "f32[90×160×2]" from an activity entry (shape without the batch). */
+/** "f32[90×160×2]" from an activity entry (shape without the batch; the engine sends type names). */
 export function activityShape(entry: ActivityEntry): string {
   const dims = entry.shape ? entry.shape.slice(1) : []
-  return `${typeName(entry.dtype)}[${dims.join("×") || "1"}]`
+  return `${entry.dtype ?? "?"}[${dims.join("×") || "1"}]`
 }
 
 export function formatHz(hz: number): string {

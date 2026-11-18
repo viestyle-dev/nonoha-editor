@@ -24,7 +24,7 @@ import {
   PortDataType,
   PortValue,
 } from "nonoha-client-js"
-import { LATEST_WATCH, useEditorInput } from "@/src/hooks/use-editor-input"
+import { READOUT_WATCH, useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { EditableTypography } from "@/src/components/editable-typography"
@@ -242,7 +242,7 @@ const ColorDisplay = memo(
 
         setTriggerCount(prev => prev + 1)
       },
-      LATEST_WATCH,
+      READOUT_WATCH,
       {
         // The value the port holds now (not counted as a trigger).
         current: (values: PortValue[]) => {

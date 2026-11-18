@@ -16,6 +16,11 @@ export type ValueKind =
   | 'scalar'
   /** Numeric [B, N]: a vector per row (spectrum, features, samples). */
   | 'vector'
+  /**
+   * Numeric [B] or [B, C] (at most 8 channels) with several items per
+   * dispatch: a stream such as an audio block, a line per channel.
+   */
+  | 'series'
   /** Numeric [B, H, W] (non-u8), or u8 [B, H, W] that is too small for an image: a grid. */
   | 'grid'
   /** Bool values. */
@@ -27,6 +32,8 @@ export type ValueKind =
 
 /** Smallest gray u8 frame treated as an image rather than a grid of numbers. */
 const MIN_IMAGE_SIDE = 16
+/** Most channels a stream of items is drawn with (more: a vector per item). */
+const MAX_SERIES_CHANNELS = 8
 
 export function interpretValue(dataType: PortDataType, shape: readonly number[]): ValueKind {
   if (dataType === PortDataType.String) return 'text'
@@ -34,6 +41,7 @@ export function interpretValue(dataType: PortDataType, shape: readonly number[])
   if (dataType === PortDataType.Complex64 || dataType === PortDataType.Complex128) return 'other'
   const rank = shape.length - 1 // without batch
   const isU8 = dataType === PortDataType.Uint8
+  if (shape[0] > 1 && (rank <= 0 || (rank === 1 && shape[1] <= MAX_SERIES_CHANNELS))) return 'series'
   if (rank <= 0) return 'scalar'
   if (rank === 1) {
     if (shape[1] === 1) return 'scalar'
@@ -62,6 +70,8 @@ export function alternativeKinds(kind: ValueKind): ValueKind[] {
       return ['vector', 'grid']
     case 'bytes':
       return ['bytes', 'vector']
+    case 'series':
+      return ['series', 'scalar']
     default:
       return [kind]
   }

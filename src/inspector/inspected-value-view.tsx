@@ -9,13 +9,15 @@ import { interpretValue, type ValueKind } from "./interpret"
 import { useChartTheme } from "@/src/hooks/use-chart-theme"
 import { useImageFramePainter } from "@/src/hooks/use-image-frame-painter"
 import { useRafPainter } from "@/src/hooks/use-raf-painter"
+import { useThemeStore } from "@/src/stores/theme-store"
 import { buildColormapLut } from "@/src/lib/colormaps"
 import type { ColorOrder } from "@/src/lib/image-frame"
-import { useInspector, useInspectorState } from "@/src/inspector/inspector-store"
+import { useInspector, useInspectorState, usePortProblem } from "@/src/inspector/inspector-store"
 import {
   createRendererState,
   drawGrid,
   drawScalar,
+  drawSeries,
   drawVector,
   fitCanvas,
   formatNumber,
@@ -29,7 +31,9 @@ export interface DetectedValue {
   shape: number[]
 }
 
-const WATCH_OPTIONS: WatchOptions = { intervalMs: 100, maxBytes: 256 * 1024, autoStride: [0, 1] }
+// Every item of the latest dispatch: one for an image or a spectrum, a whole
+// block for a stream (audio); the newest that fit when there are too many
+const WATCH_OPTIONS: WatchOptions = { intervalMs: 100, batch: "all", maxBytes: 256 * 1024, autoStride: [0, 1] }
 const DATA_TYPE_NAMES: Record<number, string> = {
   [PortDataType.Bool]: "bool",
   [PortDataType.Int8]: "i8",
@@ -76,7 +80,11 @@ export const InspectedValueView = memo(function InspectedValueView({
   onDetected?: (detected: DetectedValue) => void
 }) {
   const inspector = useInspector()
-  const { status } = useInspectorState()
+  // Re-render on status changes (connected below), but re-watch only when the connection itself changes
+  useInspectorState()
+  const connected = Boolean(inspector?.connected)
+  const problem = usePortProblem(portRef)
+  const [{ colors }] = useThemeStore()
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const theme = useChartTheme()
   const themeRef = useRef(theme)
@@ -122,14 +130,17 @@ export const InspectedValueView = memo(function InspectedValueView({
       case "scalar":
         drawScalar(rendererState.current, ctx, width, height, Number(array[array.length - 1]), themeRef.current)
         break
+      case "series":
+        drawSeries(ctx, width, height, array, shape[0], shape.length > 1 ? shape[1] : 1, themeRef.current)
+        break
     }
   })
 
   useEffect(() => {
-    if (!inspector || paused || !inspector.connected) return
+    if (!inspector || paused || !connected) return
     const handle = inspector.watch(portRef, WATCH_OPTIONS, {
       onSample: sample => {
-        const value = sample.values?.[0]
+        const value = sample.values[0]
         if (!value) return
         const previous = detectedRef.current
         if (
@@ -169,7 +180,7 @@ export const InspectedValueView = memo(function InspectedValueView({
       },
     })
     return () => handle?.unwatch()
-  }, [inspector, portRef, paused, painter, acceptImage, forcedKind, status.state])
+  }, [inspector, portRef, paused, painter, acceptImage, forcedKind, connected])
 
   // Encoded bytes that are not an image: show them as a plot instead.
   useEffect(() => {
@@ -200,12 +211,31 @@ export const InspectedValueView = memo(function InspectedValueView({
           {text ?? ""}
         </div>
       )}
-      {!detected && (
+      {!detected && !problem && (
         <Typography
           variant="caption"
           css={css({ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: theme.textMuted })}
         >
-          {!inspector?.connected ? "Inspector is off" : paused ? "Paused" : "Waiting for a value…"}
+          {!connected ? "Inspector is off" : paused ? "Paused" : "Waiting for a value…"}
+        </Typography>
+      )}
+      {problem && !paused && (
+        <Typography
+          variant="caption"
+          role="status"
+          css={css({
+            position: "absolute",
+            left: 4,
+            right: 4,
+            bottom: 4,
+            padding: "2px 6px",
+            borderRadius: 4,
+            background: theme.plotBackground,
+            color: colors.error,
+            overflowWrap: "anywhere",
+          })}
+        >
+          {problem}
         </Typography>
       )}
     </div>

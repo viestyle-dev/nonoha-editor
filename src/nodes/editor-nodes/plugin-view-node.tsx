@@ -74,7 +74,7 @@ const ViewInput = memo(function ViewInput({
   // What the view declares it needs: sampling for dashed edges, and the
   // current value first for "latest" inputs on solid edges.
   const options = useMemo(() => watchOptionsFor(input), [input])
-  useEditorInput(graphEndpoint, name, values => hostRef.current?.deliver(name, values), options, {
+  useEditorInput(graphEndpoint, name, (values, info) => hostRef.current?.deliver(name, values, info), options, {
     current: input.delivery === "latest",
     enabled: hostReady,
   })

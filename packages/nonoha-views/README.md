@@ -95,7 +95,13 @@ Ports carry plain arrays: the view decides what they mean.
 | `"latest"` | a state: the latest value is drawn (images, the current spectrum) | show the current value first; may skip values in between |
 
 Hosts that sample internal ports (an inspector) may still drop values
-under load; `watchOptionsFor(input)` gives the matching inspector options.
+under load; `watchOptionsFor(input)` gives the matching inspector options:
+an `"every"` input gets every item since the last sample (`info.gap` when
+some were lost), a `"latest"` input the items of the latest dispatch (the
+newest that fit the budget). An item too large for the budget arrives
+strided (an image at every second or third pixel): `info.steps` says by
+how much, so pixel coordinates from another input can be mapped. Values
+from a graph output port are always whole.
 
 ### Settings
 
@@ -111,7 +117,7 @@ reads `ctx.settings` as is:
 
 | `ctx` | Meaning |
 |---|---|
-| `onValues(input, callback)` | Values of one input, batch first. Valid during the callback only: the host may reuse the arrays, so copy what you keep. Returns a function that stops the callback |
+| `onValues(input, (values, info) => …)` | Values of one input, batch first. Valid during the callback only: the host may reuse the arrays (and `info`), so copy what you keep. `info.steps`: per value, the stride of each non-batch dimension (empty when whole); `info.gap`: items were lost before these. Returns a function that stops the callback |
 | `requestFrame(draw)` | Runs `draw` on the next animation frame; requests within a frame coalesce. Draw here, not in `onValues` |
 | `settings`, `theme`, `size` | Current values (`theme`: colors, `series`, `fontFamily`, `isDark`) |
 
@@ -180,7 +186,8 @@ the same calls.
 - `bindings` maps each view input to a graph output port name (every value,
   through `outputs`), or to an internal port `{ node, dir: "out", port }` sampled by
   the inspector (through `samples`, an `InspectorClient`; options from
-  `watchOptionsFor(input)` unless the binding gives `watch`).
+  `watchOptionsFor(input)` unless the binding gives `watch`). What the
+  inspector cannot send (`too_large`, a port gone) goes to `onError`.
 - `mountView` never opens or closes connections; the app owns the clients.
 - Inputs get what they declare: a `"latest"` input bound to an output port
   sees the port's current value first (`GraphClient.subscribeOutput` with

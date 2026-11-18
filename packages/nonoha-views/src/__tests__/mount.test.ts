@@ -100,6 +100,40 @@ describe('mountView', () => {
     expect(s.watches.every(w => w.unwatched)).toBe(true)
   })
 
+  it('tells the view how sampled values were reduced, and reports what the inspector could not send', async () => {
+    const infos: { steps: unknown; gap: boolean }[] = []
+    const view = defineView({
+      id: 'info',
+      inputs: [{ name: 'image', accepts: ['u8[?x?x3]'], delivery: 'latest' }, { name: 'level', accepts: ['f32'] }],
+      mount(_el, ctx) {
+        ctx.onValues('image', (_values, info) => infos.push({ steps: info.steps, gap: info.gap }))
+        ctx.onValues('level', (_values, info) => infos.push({ steps: info.steps, gap: info.gap }))
+      },
+    })
+    const s = fakeSamples()
+    const out = fakeOutputs()
+    const errors: string[] = []
+    await mountView(view, fakeElement(), {
+      bindings: { image: { node: 'Cam_1', dir: 'out', port: 'frame' }, level: 'level_out' },
+      samples: s.samples,
+      outputs: out.outputs,
+      onError: e => errors.push(String((e as Error).message)),
+    })
+    const sample = { values: [f32(1)], steps: [[3, 3, 1]], flags: 0x10 } as unknown as Parameters<WatchCallbacks['onSample']>[0]
+    s.watches[0].callbacks.onSample(sample)
+    out.emit('level_out', [f32(2)]) // an output port's values are whole
+    expect(infos).toEqual([
+      { steps: [[3, 3, 1]], gap: true },
+      { steps: [], gap: false },
+    ])
+    s.watches[0].callbacks.onError?.('too_large', 'u8[1x4000x4000x3]: 48000000 bytes, more than max_bytes 1048576 even reduced')
+    s.watches[0].callbacks.onGone?.()
+    expect(errors).toEqual([
+      'image: u8[1x4000x4000x3]: 48000000 bytes, more than max_bytes 1048576 even reduced (too_large)',
+      'image: the port Cam_1.frame is gone',
+    ])
+  })
+
   it('refuses bindings without their client, and never offers a write path', async () => {
     const { view, context } = recordingView()
     await expect(mountView(view, fakeElement(), { bindings: { level: 'level_out' } })).rejects.toThrow(/outputs/)

@@ -13,6 +13,9 @@ export type SampleSource = Pick<InspectorClient, 'watch'>
 /** Where an input's values come from: a graph output port (all values), or an internal port via the inspector (sampled). */
 export type ViewBinding = string | (InspectorPortRef & { watch?: WatchOptions })
 
+/** nonoha-client-js SampleFlag.Gap (the client is a type-only dependency here). */
+const GAP = 0x10
+
 export interface MountViewOptions {
   /** input name -> output port name, or an internal port. */
   bindings: Record<string, ViewBinding>
@@ -22,6 +25,7 @@ export interface MountViewOptions {
   samples?: SampleSource
   settings?: Record<string, unknown>
   theme?: ViewTheme
+  /** Errors of the view, of output subscriptions, and of sampled inputs (too_large, a port gone). */
   onError?: (error: unknown) => void
 }
 
@@ -47,6 +51,7 @@ export async function mountView(
     if (byPort ? !outputs : !samples) throw new Error(`binding "${input}" needs options.${byPort ? 'outputs' : 'samples'}`)
   }
   const definition = 'mount' in view ? view : await loadView(view)
+  const report = options.onError ?? ((error: unknown) => console.error(`[view ${definition.id}]`, error))
   const rect = element.getBoundingClientRect()
   const host = createViewHost(definition, element, {
     theme: options.theme ?? defaultViewTheme(true),
@@ -70,11 +75,18 @@ export async function mountView(
       continue
     }
     const { watch, ...ref } = binding
+    // Reused for every sample of this input (the view copies what it keeps)
+    const info: { steps: readonly (readonly number[])[]; gap: boolean } = { steps: [], gap: false }
     watches.push(
       samples!.watch(ref, watch ?? watchOptionsFor(spec), {
         onSample: sample => {
-          if (sample.values) host.deliver(input, sample.values)
+          info.steps = sample.steps
+          info.gap = (sample.flags & GAP) !== 0
+          host.deliver(input, sample.values, info)
         },
+        // e.g. too_large: the value does not fit the input's budget even reduced
+        onError: (code, message) => report(new Error(`${input}: ${message} (${code})`)),
+        onGone: () => report(new Error(`${input}: the port ${ref.node}.${ref.port} is gone`)),
       }),
     )
   }

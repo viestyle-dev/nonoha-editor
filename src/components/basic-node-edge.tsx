@@ -1,4 +1,4 @@
-import { Clear, Output } from "@mui/icons-material"
+import { Clear, Output, WarningAmber } from "@mui/icons-material"
 import { IconButton, Paper, Tooltip } from "@mui/material"
 import {
   EdgeProps,
@@ -21,7 +21,7 @@ import { useThemeStore } from "../stores/theme-store"
 import { useGraphSessionStore } from "../stores/graph-session-store"
 import { WAYPOINT_SIZE } from "../nodes/editor-nodes/waypoint-node"
 import { buildEdgePath, edgeMidpoint, findInsertionIndex, type Point } from "../lib/graph/edge-path"
-import { useInspector } from "../inspector/inspector-store"
+import { useInspector, usePortProblem } from "../inspector/inspector-store"
 
 const WAYPOINT_HALF = WAYPOINT_SIZE / 2
 
@@ -187,6 +187,10 @@ export default function BasicNodeEdge({
 
   // Dashed (inspector) edge -> route it through a new $output port instead.
   const inspector = useInspector()
+  // Why the sampled values do not arrive (too large to show, the port gone, a refused watch)
+  const problem = usePortProblem(
+    isMonitor && props.sourceHandleId ? { node: props.source, dir: "out", port: props.sourceHandleId } : null,
+  )
   const handlePromote = () => {
     inspector?.promoteHandler?.({
       source: props.source,
@@ -317,6 +321,27 @@ export default function BasicNodeEdge({
         strokeWidth={20}
         onDoubleClick={handleEdgeDoubleClick}
       />
+      {problem && !props.selected && (
+        <EdgeLabelRenderer>
+          <div
+            className="nodrag nopan"
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              pointerEvents: "all",
+              zIndex: 1000,
+            }}
+          >
+            <Tooltip title={problem}>
+              <WarningAmber
+                fontSize="small"
+                aria-label={problem}
+                style={{ display: "block", color: colors.error, background: colors.surfaceContainerHigh, borderRadius: 10, padding: 2 }}
+              />
+            </Tooltip>
+          </div>
+        </EdgeLabelRenderer>
+      )}
       {props.selected && (
         <EdgeLabelRenderer>
           <div
@@ -329,6 +354,11 @@ export default function BasicNodeEdge({
             }}
           >
             <Paper elevation={2} style={{ display: "flex", borderRadius: 16, background: colors.surfaceContainerHigh }}>
+              {problem && (
+                <Tooltip title={problem}>
+                  <WarningAmber fontSize="small" aria-label={problem} style={{ color: colors.error, margin: 5 }} />
+                </Tooltip>
+              )}
               {isMonitor && inspector?.promoteHandler && (
                 <Tooltip title="Make output port: every value, also available to apps">
                   <IconButton size="small" onClick={handlePromote} aria-label="Make output port">

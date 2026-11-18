@@ -11,6 +11,7 @@ export type {
   ViewSettingSpec,
   ViewSuit,
   ViewTheme,
+  ValuesInfo,
 } from './sdk'
 export { createViewHost, defaultViewTheme, resolveSettings, watchOptionsFor } from './host'
 export type { ViewHost, ViewHostOptions } from './host'

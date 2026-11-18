@@ -20,7 +20,7 @@ import {
   PortDataType,
   PortValue,
 } from "nonoha-client-js"
-import { LATEST_WATCH, useEditorInput } from "@/src/hooks/use-editor-input"
+import { READOUT_WATCH, useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { EditableTypography } from "@/src/components/editable-typography"
@@ -136,7 +136,7 @@ const BytesDisplay = memo(
         refCurrentPortValues.current = values
         updateDisplay(values)
       },
-      LATEST_WATCH,
+      READOUT_WATCH,
       { current: true },
     )
 

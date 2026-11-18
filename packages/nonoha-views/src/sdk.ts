@@ -83,9 +83,25 @@ export interface ViewTheme {
   fontFamily: string
 }
 
+/**
+ * How a delivery's values were sampled. Values from a graph output port are
+ * whole (no steps, no gap); a host that samples an internal port (the
+ * inspector) may have reduced them to fit its budget.
+ */
+export interface ValuesInfo {
+  /**
+   * Per value slot, the stride of each non-batch dimension; empty when not
+   * strided. E.g. `[[3, 3, 1]]`: every third row and column of an image (map
+   * pixel coordinates from other inputs with it).
+   */
+  readonly steps: readonly (readonly number[])[]
+  /** Items were lost before these values (an "every" input could not get all of them). */
+  readonly gap: boolean
+}
+
 export interface ViewContext {
-  /** Values for one input, batch first. Valid during the callback: the host may reuse the arrays, so copy what you keep. */
-  onValues(input: string, callback: (values: PortValue[]) => void): () => void
+  /** Values for one input, batch first. Valid during the callback: the host may reuse the arrays (and `info`), so copy what you keep. */
+  onValues(input: string, callback: (values: PortValue[], info: ValuesInfo) => void): () => void
   /** Run `draw` once on the next animation frame (calls within a frame coalesce). */
   requestFrame(draw: () => void): void
   /** Current settings, resolved against the specs (see ViewSettingSpec). */

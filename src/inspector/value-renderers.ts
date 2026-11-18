@@ -106,16 +106,7 @@ export function drawVector(
   const plotH = height - 2 * PAD
   const scaleY = plotH / (hi - lo)
   const stepX = length > 1 ? (width - 2 * PAD) / (length - 1) : 0
-
-  if (lo < 0 && hi > 0) {
-    const zeroY = PAD + (hi - 0) * scaleY
-    ctx.strokeStyle = theme.grid
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(PAD, zeroY)
-    ctx.lineTo(width - PAD, zeroY)
-    ctx.stroke()
-  }
+  drawZeroLine(ctx, width, lo, hi, scaleY, theme)
 
   ctx.strokeStyle = theme.series[0]
   ctx.lineWidth = 1.5
@@ -148,6 +139,72 @@ export function drawVector(
     }
   }
   ctx.stroke()
+  drawRangeLabels(ctx, width, height, lo, hi, theme)
+}
+
+function drawZeroLine(ctx: CanvasRenderingContext2D, width: number, lo: number, hi: number, scaleY: number, theme: ChartTheme) {
+  if (!(lo < 0 && hi > 0)) return
+  const zeroY = PAD + hi * scaleY
+  ctx.strokeStyle = theme.grid
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(PAD, zeroY)
+  ctx.lineTo(width - PAD, zeroY)
+  ctx.stroke()
+}
+
+/**
+ * Every item of a dispatch, a line per channel (e.g. an audio block): x is
+ * the item, `array` holds items x channels row-major. Long series are drawn
+ * as min/max columns, like drawVector.
+ */
+export function drawSeries(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  array: NumericArray,
+  items: number,
+  channels: number,
+  theme: ChartTheme,
+) {
+  drawFrame(ctx, width, height, theme)
+  if (items === 0 || channels === 0) return
+  const [lo, hi] = finiteRange(array, 0, items * channels)
+  const scaleY = (height - 2 * PAD) / (hi - lo)
+  drawZeroLine(ctx, width, lo, hi, scaleY, theme)
+  const columns = Math.max(1, Math.floor(width - 2 * PAD))
+  const stepX = items > 1 ? (width - 2 * PAD) / (items - 1) : 0
+  ctx.lineWidth = 1.25
+  ctx.lineJoin = "round"
+  for (let c = 0; c < channels; ++c) {
+    ctx.strokeStyle = theme.series[c % theme.series.length]
+    ctx.beginPath()
+    if (items <= columns * 2) {
+      for (let i = 0; i < items; ++i) {
+        const x = PAD + i * stepX
+        const y = PAD + (hi - valueAt(array, i * channels + c)) * scaleY
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      }
+    } else {
+      const per = items / columns
+      for (let col = 0; col < columns; ++col) {
+        const start = Math.floor(col * per)
+        const end = Math.floor((col + 1) * per)
+        let cmin = Infinity
+        let cmax = -Infinity
+        for (let i = start; i < end; ++i) {
+          const v = valueAt(array, i * channels + c)
+          if (v < cmin) cmin = v
+          if (v > cmax) cmax = v
+        }
+        const x = PAD + col
+        ctx.moveTo(x, PAD + (hi - cmax) * scaleY)
+        ctx.lineTo(x, PAD + (hi - cmin) * scaleY)
+      }
+    }
+    ctx.stroke()
+  }
   drawRangeLabels(ctx, width, height, lo, hi, theme)
 }
 
