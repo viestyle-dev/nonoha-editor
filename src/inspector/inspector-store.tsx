@@ -151,8 +151,8 @@ export class EditorInspector {
     }
   }
 
-  resume(): void {
-    this.client?.resume()
+  forceResume(): void {
+    this.client?.forceResume()
   }
 
   get connected(): boolean {

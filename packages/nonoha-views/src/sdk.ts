@@ -9,7 +9,7 @@ import type { PortValue } from 'nonoha-client-js'
  * manifest generated from them (see bin/view-manifest.mjs):
  *
  * ```js
- * // <plugin>/static/views/level.js
+ * // <plugin package>/static/views/level.js (served at /plugins/<id>/static/views/)
  * export default {
  *   sdk: 1,
  *   id: "level",
@@ -125,13 +125,13 @@ export function defineView(definition: ViewDefinition): DefinedView {
 /** What a view declares, without its code (built-in views are listed in this form). */
 export type ViewMetadata = Omit<ViewDefinition, 'mount'>
 
-/** A view as listed in `<plugin>/static/views/manifest.json`: its metadata and module. */
+/** A view as listed in `<plugin package>/static/views/manifest.json`: its metadata and module. */
 export type ViewManifestEntry = ViewMetadata & {
   /** Module path relative to the manifest. */
   module: string
 }
 
-/** `<plugin>/static/views/manifest.json`, generated from the modules (data only). */
+/** `<plugin package>/static/views/manifest.json`, generated from the modules (data only). */
 export interface ViewManifest {
   sdk: number
   views: ViewManifestEntry[]

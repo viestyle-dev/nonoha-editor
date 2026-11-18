@@ -25,10 +25,12 @@ the host's copy). Hosts open the connections and pass the clients in.
 ## Writing a view
 
 A plugin ships views as plain ES modules with no imports, in
-`<plugin>/static/views/`. The default export is the view:
+`static/views/` inside its Python package (e.g.
+`plugins/user-nodes/user_nodes/static/views/`; the engine serves it at
+`/plugins/<id>/static/views/`). The default export is the view:
 
 ```js
-// <plugin>/static/views/level.js
+// <plugin package>/static/views/level.js
 export default {
   sdk: 1,
   id: "level",

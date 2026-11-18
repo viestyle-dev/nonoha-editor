@@ -90,7 +90,7 @@ export function InspectorStatusButton() {
             </Typography>
           )}
           {state === "paused" && (
-            <Button size="small" variant="outlined" onClick={() => inspector.resume()} css={css({ alignSelf: "flex-start" })}>
+            <Button size="small" variant="outlined" onClick={() => inspector.forceResume()} css={css({ alignSelf: "flex-start" })}>
               Resume now
             </Button>
           )}
