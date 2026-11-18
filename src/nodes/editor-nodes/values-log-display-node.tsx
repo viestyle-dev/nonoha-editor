@@ -5,8 +5,6 @@ import {
   NodeResizeControl,
   ResizeParams,
   ResizeDragEvent,
-  useHandleConnections,
-  useNodesData,
   useReactFlow,
 } from "@xyflow/react"
 import { Button, Divider, IconButton, Paper, TextField } from "@mui/material"
@@ -17,14 +15,13 @@ import { enqueueSnackbar } from "notistack"
 
 import {
   GraphEndpoint,
-  PortData,
   PortDataType,
   PortValue,
 } from "nonoha-client-js"
+import { useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { NodeHandleLeft } from "@/src/components/node-handle"
-import { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
 import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { SignalLamp } from "@/src/components/signal-lamp"
@@ -47,16 +44,6 @@ const ValuesLogDisplay = memo(
   }) => {
     const { graphEndpoint, maxEntries } = props
 
-    const valuesConns = useHandleConnections({
-      type: "target",
-      id: "values",
-    })
-    const valuesSourcesData = useNodesData<BasicPortNode>(
-      valuesConns[0]?.source,
-    )
-    const valuesSourcesDataRef = useRef(valuesSourcesData)
-    valuesSourcesDataRef.current = valuesSourcesData
-
     const [{ colors }] = useThemeStore()
 
     const bufferRef = useRef<string[]>([])
@@ -66,45 +53,14 @@ const ValuesLogDisplay = memo(
     const [renderTrigger, setRenderTrigger] = useState(0)
     const [triggerCount, setTriggerCount] = useState(0)
 
-    // Initial fetch + reconnect reset
-    useEffect(() => {
-      const portName = valuesSourcesData?.data.port.name
-      if (!graphEndpoint || !portName) {
-        return
-      }
-
-      bufferRef.current = []
-      entryCountRef.current = 0
-
-      graphEndpoint
-        .fetchOutputValues(portName)
-        .then(values => {
-          if (values.length > 0) {
-            const entry = values.map(v => valueToString(v)).join(" | ")
-            bufferRef.current = [entry]
-            entryCountRef.current = 1
-            setRenderTrigger(prev => prev + 1)
-          }
-        })
-        .catch(error => {
-          console.error(error)
-        })
-    }, [graphEndpoint, valuesSourcesData])
-
-    // Live accumulation
-    useEffect(() => {
-      if (!graphEndpoint) {
-        return
-      }
-
-      const onOutputCallback = (output: PortData) => {
-        if (
-          valuesSourcesDataRef.current?.data.port.name !== output.portName
-        ) {
-          return
-        }
-
-        const entry = output.values.map(v => valueToString(v)).join(" | ")
+    // Live accumulation: solid edge ($output port: one entry per dispatch)
+    // or dashed edge (engine node: one entry per inspector sample, holding
+    // every row since the previous sample).
+    const valuesSource = useEditorInput(
+      graphEndpoint,
+      "values",
+      (values: PortValue[]) => {
+        const entry = values.map(v => valueToString(v)).join(" | ")
         bufferRef.current.push(entry)
         entryCountRef.current += 1
 
@@ -114,14 +70,34 @@ const ValuesLogDisplay = memo(
 
         setTriggerCount(prev => prev + 1)
         setRenderTrigger(prev => prev + 1)
-      }
+      },
+      undefined,
+      {
+        // A solid edge starts the log with the value the port holds now
+        // (not counted as a trigger).
+        current: (values: PortValue[]) => {
+          if (values.length === 0) return
+          bufferRef.current = [values.map(v => valueToString(v)).join(" | ")]
+          entryCountRef.current = 1
+          setRenderTrigger(prev => prev + 1)
+        },
+      },
+    )
+    const valuesPort =
+      valuesSource.kind === "output" ? valuesSource.portName : undefined
+    const inspectedPort =
+      valuesSource.kind === "inspector"
+        ? `${valuesSource.ref.node}.${valuesSource.ref.port}`
+        : undefined
 
-      graphEndpoint.addOutputCallback(onOutputCallback)
-
-      return () => {
-        graphEndpoint.removeOutputCallback(onOutputCallback)
+    // A new source (or reconnect) starts a new log.
+    useEffect(() => {
+      if (!inspectedPort && !(graphEndpoint && valuesPort)) {
+        return
       }
-    }, [graphEndpoint, maxEntries])
+      bufferRef.current = []
+      entryCountRef.current = 0
+    }, [graphEndpoint, valuesPort, inspectedPort])
 
     // Auto-scroll (only when enabled)
     useEffect(() => {

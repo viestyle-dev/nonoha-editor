@@ -62,6 +62,8 @@ export interface PortAddDialogProps {
   initialPosition?: { x: number; y: number }
   /** Existing port names for duplicate validation and reference display. */
   existingPortNames?: string[]
+  /** Pre-filled port name (user can still edit). */
+  initialPortName?: string
 }
 
 export function PortAddDialog({
@@ -73,6 +75,7 @@ export function PortAddDialog({
   initialValueTypeList,
   initialPosition,
   existingPortNames,
+  initialPortName,
 }: PortAddDialogProps) {
   const [portName, setPortName] = useState("")
   const [valueTypeList, setValueTypeList] = useState("")
@@ -80,10 +83,10 @@ export function PortAddDialog({
   // Reset fields when dialog opens
   useEffect(() => {
     if (open) {
-      setPortName("")
+      setPortName(initialPortName ?? "")
       setValueTypeList(initialValueTypeList ?? "")
     }
-  }, [open, initialValueTypeList])
+  }, [open, initialValueTypeList, initialPortName])
 
   const portNameError = useMemo(() => {
     const charError = validatePortName(portName)
@@ -295,9 +298,11 @@ export function NodeAddDialog({
 
     // Editor nodes
     for (const proto of nodePrototypes) {
-      const meta = EDITOR_NODE_CATALOG[proto.type]
+      const meta = proto.catalog
+        ? { ...proto.catalog, outputs: [] as CatalogPortInfo[] }
+        : EDITOR_NODE_CATALOG[proto.type]
       result.push({
-        key: `editor:${proto.type}`,
+        key: `editor:${proto.catalog?.key ?? proto.type}`,
         label: meta?.label ?? proto.data.label,
         category: meta?.category ?? "Editor",
         description: meta?.description ?? "",
@@ -414,7 +419,8 @@ export function NodeAddDialog({
             id: uniqueId,
             data: {
               ...entry.prototype.data,
-              label: uniqueId,
+              // Views keep their title; other editor nodes are named by id.
+              label: entry.prototype.catalog ? entry.prototype.data.label : uniqueId,
             },
             position: screenToFlowPosition({ x: 100, y: 100 }),
             dragHandle: ".drag-handle",

@@ -26,6 +26,8 @@ import { enqueueSnackbar } from "notistack"
 import { useRouter } from "next/navigation"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { DarkMode, LightMode, MoreVert } from "@mui/icons-material"
+import { EngineAboutControls } from "@/src/components/engine-about"
+import { EnvSettingsDialog, EnvSettingsMenuItem } from "@/src/components/env-settings-dialog"
 
 export default function Page() {
   const [engineGatewayState, engineGatewayStateActions] =
@@ -38,6 +40,8 @@ export default function Page() {
   const { colors } = themeState
   const [settingsMenuAnchorEl, setSettingsMenuAnchorEl] =
     useState<HTMLElement | null>(null)
+  const [aboutOpen, setAboutOpen] = useState(false)
+  const [envSettingsOpen, setEnvSettingsOpen] = useState(false)
 
   const [graphNames, setGraphNames] = useState<string[]>([])
 
@@ -82,7 +86,18 @@ export default function Page() {
             nonoha Editor
           </Typography>
           <div css={css({ flexGrow: 1 })} />
-          <div>
+          <div css={css({ display: "flex", alignItems: "center", gap: 8 })}>
+            <EngineAboutControls
+              engineGatewayUrl={engineGatewayState.engineGatewayUrl}
+              open={aboutOpen}
+              onOpen={() => setAboutOpen(true)}
+              onClose={() => setAboutOpen(false)}
+            />
+            <EnvSettingsDialog
+              open={envSettingsOpen}
+              onClose={() => setEnvSettingsOpen(false)}
+              engineGatewayUrl={engineGatewayState.engineGatewayUrl}
+            />
             <IconButton
               color="inherit"
               edge="end"
@@ -106,6 +121,21 @@ export default function Page() {
                 }}
               >
                 Engine Gateway Settings
+              </MenuItem>
+              <EnvSettingsMenuItem
+                engineGatewayUrl={engineGatewayState.engineGatewayUrl}
+                onClick={() => {
+                  setEnvSettingsOpen(true)
+                  setSettingsMenuAnchorEl(null)
+                }}
+              />
+              <MenuItem
+                onClick={() => {
+                  setAboutOpen(true)
+                  setSettingsMenuAnchorEl(null)
+                }}
+              >
+                About nonoha Editor
               </MenuItem>
               <div
                 css={css({

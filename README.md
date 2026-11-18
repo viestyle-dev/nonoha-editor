@@ -61,13 +61,16 @@ nonoha-editor/
 │   ├── types/            # TypeScript types
 │   └── utils/            # Utility functions
 └── packages/
-    └── nonoha-client-js/  # Engine client library (git submodule)
+    ├── nonoha-client-js/  # Engine client library (git submodule)
+    └── nonoha-views/      # Views: contract, host, catalog, built-in views
 ```
 
 `packages/nonoha-client-js` is a git submodule of
 [nonoha-client-js](https://github.com/viestyle-dev/nonoha-client-js);
 clone with `--recursive` (or run
-`git submodule update --init --recursive`).
+`git submodule update --init --recursive`). `packages/nonoha-views` holds
+the views plugins add to the editor (and apps can show); its
+[README](packages/nonoha-views/README.md) is the reference for writing one.
 
 ## Available Scripts
 
@@ -77,6 +80,7 @@ clone with `--recursive` (or run
 | `npm run dev:watch`  | Development with dependency watching |
 | `npm run build`      | Production build                     |
 | `npm run lint`       | Run ESLint                           |
+| `npm run build:iife` | Build the packages' browser scripts  |
 | `npm test`           | Run tests (vitest)                   |
 | `npm run clean`      | Clean build artifacts                |
 

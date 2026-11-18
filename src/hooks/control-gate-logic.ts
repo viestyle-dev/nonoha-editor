@@ -50,6 +50,35 @@ export function lastTruthyOfValues(
   return Number(last) !== 0
 }
 
+// Feeds the latest element of every batch row of the first PortValue to the
+// gate, oldest first, and returns whether any row was a rising edge. For
+// inspector samples taken with batch "since" (every row since the previous
+// sample), so a pulse shorter than the sampling interval is not missed.
+// Missing, empty, or string values leave the gate unchanged.
+export function updateGateWithRows(
+  gate: RisingEdgeGate,
+  values: readonly PortValue[] | undefined
+): boolean {
+  const value = values?.[0]
+  if (!value || value.array == null || value.array.length === 0) {
+    return false
+  }
+  const array = value.array
+  const rows = value.shape[0] > 0 ? value.shape[0] : 1
+  const step = Math.max(1, Math.floor(array.length / rows))
+  let fired = false
+  for (let i = step - 1; i < array.length; i += step) {
+    const element = array[i]
+    if (typeof element === "string") {
+      return fired
+    }
+    if (gate.update(Number(element) !== 0)) {
+      fired = true
+    }
+  }
+  return fired
+}
+
 // Detects only false -> true rising edges of a bool state signal.
 // Because it works on state (not pulses), it can be re-synced from a REST
 // snapshot (current value) via prime(): prime only records the value and

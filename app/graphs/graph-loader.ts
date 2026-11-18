@@ -87,6 +87,10 @@ export const buildGraph = async (
         height?: number
         type?: string
         data?: Record<string, unknown>
+        // Display title of an editor node (defaults to its id)
+        label?: string
+        // Engine node: output previewed inside the node
+        preview?: string | null
       }
     } = await (
       await fetch(
@@ -152,6 +156,7 @@ export const buildGraph = async (
               variant: getEngineNodeVariant(nodeData.type),
               nodeData: nodeData,
               graphEndpoint: graphEndpoint,
+              preview: settings?.preview ?? undefined,
             },
             position: { x: settings?.x ?? 240, y: settings?.y ?? 100 },
             type: getEngineNodeUIType(nodeData.type),
@@ -223,7 +228,7 @@ export const buildGraph = async (
           id: nodeName,
           data: {
             nodeData: settings.data,
-            label: nodeName,
+            label: settings.label ?? nodeName,
             graphEndpoint: graphEndpoint,
             editorModelUpdater,
           },

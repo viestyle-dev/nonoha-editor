@@ -4,8 +4,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Node,
   NodeProps,
-  useHandleConnections,
-  useNodesData,
   useReactFlow,
   useViewport,
 } from "@xyflow/react"
@@ -26,9 +24,9 @@ import dynamic from "next/dynamic"
 import { enqueueSnackbar } from "notistack"
 
 import { NodeHandleLeft } from "@/src/components/node-handle"
-import { GraphEndpoint, PortData, PortDataType, PortValue } from "nonoha-client-js"
+import { GraphEndpoint, PortDataType, PortValue } from "nonoha-client-js"
+import { SNAPSHOT_WATCH, useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
-import { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
 import {
   FastLineChartPlotData,
   FastLineChartGraphHandle,
@@ -174,22 +172,6 @@ const GraphWrapper = memo(
     // Reuse buffers for 2D trace extraction (trace_dim = -1 transpose case)
     const refTraceBuffers = useRef<number[][] | undefined>(undefined)
 
-    // --- traces connection
-    const tracesConns = useHandleConnections({ type: "target", id: "traces" })
-    const tracesSourcesData = useNodesData<BasicPortNode>(
-      tracesConns[0]?.source
-    )
-    const refTracesSourcesData = useRef(tracesSourcesData)
-    refTracesSourcesData.current = tracesSourcesData
-    // --- xLabels connection
-    const xLabelsConns = useHandleConnections({ type: "target", id: "xLabels" })
-    const xLabelsSourcesData = useNodesData<BasicPortNode>(
-      xLabelsConns[0]?.source
-    )
-    const refXLabelsSourcesData = useRef(xLabelsSourcesData)
-    refXLabelsSourcesData.current = xLabelsSourcesData
-    // ---
-
     const onErrorRef = useRef(onError)
     onErrorRef.current = onError
 
@@ -256,38 +238,10 @@ const GraphWrapper = memo(
       })
     }, [reportError])
 
-    // Fetch initial xLabels via REST
-    useEffect(() => {
-      const portName = xLabelsSourcesData?.data?.port.name
-      if (!graphEndpoint || !portName) return
-
-      graphEndpoint.fetchOutputValues(portName)
-        .then(values => onXLabelsCallback(values))
-        .catch(error => console.error(error))
-    }, [graphEndpoint, xLabelsSourcesData, onXLabelsCallback])
-
-    // Subscribe to WebSocket output callbacks
-    useEffect(() => {
-      if (!graphEndpoint) return
-
-      const onOutputCallback = (portData: PortData) => {
-        if (
-          refTracesSourcesData.current?.data.port.name === portData.portName
-        ) {
-          onTracesCallback(portData.values)
-        } else if (
-          refXLabelsSourcesData.current?.data.port.name === portData.portName
-        ) {
-          onXLabelsCallback(portData.values)
-        }
-      }
-
-      graphEndpoint.addOutputCallback(onOutputCallback)
-
-      return () => {
-        graphEndpoint.removeOutputCallback(onOutputCallback)
-      }
-    }, [graphEndpoint, onTracesCallback, onXLabelsCallback])
+    // Solid edges ($output ports) or dashed edges (engine node outputs via the inspector).
+    useEditorInput(graphEndpoint, "traces", onTracesCallback, SNAPSHOT_WATCH)
+    // Labels rarely change: also take the value the port holds now.
+    useEditorInput(graphEndpoint, "xLabels", onXLabelsCallback, SNAPSHOT_WATCH, { current: true })
 
     return (
       <FastLineChartGraph
@@ -312,6 +266,7 @@ export type FastLineChartGraphNode = Node<{
   graphEndpoint: GraphEndpoint | undefined
   editorModelUpdater: EditorModelUpdater
   nodeData?: {
+    recordOnOpen?: boolean
     graphWidth?: number
     graphHeight?: number
     traceDim?: number
@@ -366,7 +321,8 @@ export const FastLineChartGraphNode = memo(
       [props.id, setNodes]
     )
 
-    const [isRecording, setIsRecording] = useState(false)
+    // recordOnOpen: start recording when the node opens (e.g. pinned monitors).
+    const [isRecording, setIsRecording] = useState(props.data.nodeData?.recordOnOpen === true)
     const [detailsOpen, setDetailsOpen] = useState(false)
     const [graphError, setGraphError] = useState<string | undefined>()
 

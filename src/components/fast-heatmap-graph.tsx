@@ -8,6 +8,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from "react"
@@ -15,7 +16,23 @@ import uPlot from "uplot"
 import "uplot/dist/uPlot.min.css"
 import { Home, ZoomIn, OpenWith } from "@mui/icons-material"
 
-import { HeatmapRaster, PORTLAND_STOPS } from "@/src/lib/heatmap-raster"
+import { HeatmapRaster } from "@/src/lib/heatmap-raster"
+import {
+  ColormapName,
+  colormapCssGradient,
+  DEFAULT_COLORMAP,
+} from "@/src/lib/colormaps"
+import { ChartTheme } from "@/src/lib/chart-theme"
+import { useChartTheme } from "@/src/hooks/use-chart-theme"
+import { useRafPainter } from "@/src/hooks/use-raf-painter"
+import {
+  drawWriteHead,
+  fillPlotArea,
+  styleTooltip,
+  themedAxis,
+  toolbarIconStyle,
+  uplotThemeStyles,
+} from "@/src/lib/uplot-theme"
 
 type InteractionMode = "zoom" | "pan"
 
@@ -37,6 +54,8 @@ export interface FastHeatmapGraphProps {
   yRange?: { min?: number; max?: number }
   // Effective z range currently used for coloring (for the colorbar labels).
   zRange?: { min: number; max: number }
+  // Colormap the raster was painted with (drives the colorbar gradient).
+  colormap?: ColormapName
   /** ReactFlow viewport zoom factor for correcting mouse coordinates */
   viewportZoom?: number
 }
@@ -51,18 +70,14 @@ const GraphToolbar = memo(
     onResetAxis,
     mode,
     onModeChange,
+    theme,
   }: {
     onResetAxis: () => void
     mode: InteractionMode
     onModeChange: (mode: InteractionMode) => void
+    theme: ChartTheme
   }) => {
-    const iconStyle = (isActive: boolean) =>
-      css({
-        fontSize: 18,
-        color: isActive ? "#1976d2" : "#666",
-        cursor: "pointer",
-        "&:hover": { color: isActive ? "#1976d2" : "#333" },
-      })
+    const iconStyle = (isActive: boolean) => toolbarIconStyle(theme, isActive)
 
     return (
       <div
@@ -74,12 +89,7 @@ const GraphToolbar = memo(
         })}
       >
         <Home
-          css={css({
-            fontSize: 18,
-            color: "#666",
-            cursor: "pointer",
-            "&:hover": { color: "#333" },
-          })}
+          css={iconStyle(false)}
           onClick={onResetAxis}
           titleAccess="Reset Axis"
         />
@@ -100,10 +110,9 @@ const GraphToolbar = memo(
 
 GraphToolbar.displayName = "GraphToolbar"
 
-// CSS gradient matching the Portland LUT, bottom = zMin, top = zMax.
-const COLORBAR_GRADIENT = `linear-gradient(to top, ${PORTLAND_STOPS.map(
-  ([t, [r, g, b]]) => `rgb(${r},${g},${b}) ${t * 100}%`,
-).join(", ")})`
+// Static styles hoisted out of render (the chart re-renders per paint).
+const ROOT_STYLE = css({ position: "relative" })
+const ROW_STYLE = css({ display: "flex", flexDirection: "row" })
 
 const FastHeatmapGraph = forwardRef<
   FastHeatmapGraphHandle,
@@ -151,6 +160,12 @@ const FastHeatmapGraph = forwardRef<
   // Store ReactFlow viewportZoom in ref for use in cursor.move callback
   const viewportZoomRef = useRef(props.viewportZoom ?? 1)
   viewportZoomRef.current = props.viewportZoom ?? 1
+
+  // Theme lives in a ref: uPlot reads colours through functions on every
+  // draw, so a theme change restyles in place (see the theme effect below).
+  const theme = useChartTheme()
+  const themeRef = useRef(theme)
+  themeRef.current = theme
 
   // Y bounds of the data rows: yLabels ends when present, else row indices.
   const yBounds = useCallback((): [number, number] => {
@@ -263,13 +278,11 @@ const FastHeatmapGraph = forwardRef<
     tt.style.display = "none"
     tt.style.pointerEvents = "none"
     tt.style.zIndex = "10"
-    tt.style.background = "rgba(255, 255, 255, 0.95)"
-    tt.style.border = "1px solid #999"
-    tt.style.borderRadius = "3px"
+    styleTooltip(tt, themeRef.current)
+    tt.style.borderRadius = "4px"
     tt.style.padding = "3px 6px"
     tt.style.fontSize = "10px"
     tt.style.lineHeight = "1.4"
-    tt.style.color = "#333"
     tt.style.whiteSpace = "pre"
     tt.style.fontVariantNumeric = "tabular-nums"
     // Destroyed together with the chart (u.over is part of uPlot's DOM).
@@ -342,23 +355,7 @@ const FastHeatmapGraph = forwardRef<
 
   // Cursor line drawing hook (same as the fast time-series chart).
   const drawCursorLine = useCallback((u: uPlot) => {
-    const ctx = u.ctx
-    const cursorPos = cursorPositionRef.current
-    const cursorX = u.valToPos(cursorPos, "x", true)
-
-    // Don't draw if outside graph area
-    if (cursorX < u.bbox.left || cursorX > u.bbox.left + u.bbox.width) {
-      return
-    }
-
-    ctx.save()
-    ctx.strokeStyle = "grey"
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.moveTo(cursorX, u.bbox.top)
-    ctx.lineTo(cursorX, u.bbox.top + u.bbox.height)
-    ctx.stroke()
-    ctx.restore()
+    drawWriteHead(u, cursorPositionRef.current, themeRef.current.cursor)
   }, [])
 
   // Reset scale function
@@ -583,23 +580,14 @@ const FastHeatmapGraph = forwardRef<
         },
       },
       axes: [
-        {
-          show: true,
-          stroke: "#888",
-          grid: { stroke: "rgba(136, 136, 136, 0.3)", width: 1 },
-          ticks: { stroke: "#888", width: 1 },
-        },
-        {
-          show: true,
-          stroke: "#888",
-          grid: { stroke: "rgba(136, 136, 136, 0.3)", width: 1 },
-          ticks: { stroke: "#888", width: 1 },
+        themedAxis(themeRef),
+        themedAxis(themeRef, {
           size: (self: uPlot, values: string[]) => {
             if (!values || values.length === 0) return 50
             const maxLen = Math.max(...values.map(v => v.length))
             return Math.max(50, maxLen * 8 + 12)
           },
-        },
+        }),
       ],
       series: [
         {},
@@ -612,7 +600,8 @@ const FastHeatmapGraph = forwardRef<
       ],
       hooks: {
         init: [initTooltip],
-        drawClear: [blitRaster],
+        // Plot-area fill first; empty (NaN) cells are transparent over it.
+        drawClear: [fillPlotArea(themeRef), blitRaster],
         draw: [drawCursorLine],
         setCursor: [updateTooltip],
       },
@@ -727,23 +716,68 @@ const FastHeatmapGraph = forwardRef<
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.yLabels])
 
-  // Paint update: upload pixels to the offscreen canvas and redraw.
-  useEffect(() => {
+  // Paint update: upload pixels to the offscreen canvas and redraw. Runs at
+  // most once per animation frame; the raster accumulates every batch in
+  // the meantime, so nothing is lost by skipping intermediate versions.
+  const paint = useCallback(() => {
     if (!uplotRef.current) return
 
+    const p = propsRef.current
     const geometryChanged = syncOffscreen()
-    cursorPositionRef.current = props.cursorPosition
+    cursorPositionRef.current = p.cursorPosition
 
     if (geometryChanged) {
       // New xLength/yLength: refresh the dummy data and reset the view.
       isCustomViewRef.current = false
       savedYScaleRef.current = null
-      uplotRef.current.setData(buildData(props.raster.xLength), false)
+      uplotRef.current.setData(buildData(p.raster.xLength), false)
       resetScale()
     }
     uplotRef.current.redraw()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.paintVersion])
+  }, [buildData, resetScale, syncOffscreen])
+
+  const painter = useRafPainter(paint)
+
+  useEffect(() => {
+    painter.schedule()
+  }, [props.paintVersion, painter])
+
+  // Theme change: restyle in place (strokes resolve through themeRef).
+  const isFirstThemeRef = useRef(true)
+  useEffect(() => {
+    if (isFirstThemeRef.current) {
+      isFirstThemeRef.current = false
+      return
+    }
+    if (tooltipRef.current) {
+      styleTooltip(tooltipRef.current, theme)
+    }
+    uplotRef.current?.redraw(false)
+  }, [theme])
+
+  const containerStyles = useMemo(() => uplotThemeStyles(theme), [theme])
+  const colorbarStyles = useMemo(
+    () => ({
+      column: css({
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "8px 4px",
+        fontSize: 10,
+        color: theme.textMuted,
+        fontVariantNumeric: "tabular-nums",
+      }),
+      bar: css({
+        flexGrow: 1,
+        width: 12,
+        margin: "2px 0",
+        borderRadius: 2,
+        background: colormapCssGradient(props.colormap ?? DEFAULT_COLORMAP),
+      }),
+    }),
+    [theme, props.colormap],
+  )
 
   const zMinLabel =
     props.zRange !== undefined ? formatZ(props.zRange.min) : "--"
@@ -751,51 +785,19 @@ const FastHeatmapGraph = forwardRef<
     props.zRange !== undefined ? formatZ(props.zRange.max) : "--"
 
   return (
-    <div
-      css={css({
-        position: "relative",
-        background: "#fff",
-      })}
-    >
+    <div css={ROOT_STYLE}>
       <GraphToolbar
         onResetAxis={resetScale}
         mode={interactionMode}
         onModeChange={setInteractionMode}
+        theme={theme}
       />
-      <div css={css({ display: "flex", flexDirection: "row" })}>
-        <div
-          ref={containerRef}
-          style={props.style}
-          css={css`
-            .uplot {
-              font-family: inherit;
-              background: #fff;
-            }
-          `}
-        />
-        {/* Colorbar: CSS gradient matching the Portland LUT */}
-        <div
-          css={css({
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "8px 4px",
-            fontSize: 10,
-            color: "#666",
-            fontVariantNumeric: "tabular-nums",
-          })}
-        >
+      <div css={ROW_STYLE}>
+        <div ref={containerRef} style={props.style} css={containerStyles} />
+        {/* Colorbar: CSS gradient matching the raster's colormap LUT */}
+        <div css={colorbarStyles.column}>
           <span>{zMaxLabel}</span>
-          <div
-            css={css({
-              flexGrow: 1,
-              width: 12,
-              margin: "2px 0",
-              borderRadius: 2,
-              background: COLORBAR_GRADIENT,
-            })}
-          />
+          <div css={colorbarStyles.bar} />
           <span>{zMinLabel}</span>
         </div>
       </div>

@@ -4,17 +4,15 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Node,
   NodeProps,
-  useHandleConnections,
-  useNodesData,
   useReactFlow,
 } from "@xyflow/react"
 import { css } from "@emotion/react"
 import {
   GraphEndpoint,
-  PortData,
   PortDataType,
   PortValue,
 } from "nonoha-client-js"
+import { SNAPSHOT_WATCH, useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { useThemeStore } from "@/src/stores/theme-store"
 import {
@@ -32,7 +30,6 @@ import {
 import { NodeHandleLeft } from "@/src/components/node-handle"
 import dynamic from "next/dynamic"
 import { HeatmapPlotData } from "@/src/components/heatmap-graph"
-import { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
 import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { ExpandLess, ExpandMore } from "@mui/icons-material"
@@ -42,6 +39,11 @@ import { useControlGates } from "@/src/hooks/use-control-gates"
 import { ChartControlBar } from "@/src/components/chart-control-bar"
 import { ControlGateHandles } from "@/src/components/control-gate-handles"
 import { ControlModeToggle } from "@/src/components/control-mode-toggle"
+import {
+  COLORMAP_OPTIONS,
+  ColormapName,
+  resolveColormap,
+} from "@/src/lib/colormaps"
 
 const HeatmapGraph = dynamic(() => import("@/src/components/heatmap-graph"), {
   ssr: false,
@@ -58,6 +60,7 @@ const GraphWrapper = memo(
     graphHeight = 320,
     zMin,
     zMax,
+    colormap,
   }: {
     graphEndpoint: GraphEndpoint | undefined
     recording: boolean
@@ -68,31 +71,13 @@ const GraphWrapper = memo(
     graphHeight?: number
     zMin?: number
     zMax?: number
+    colormap?: ColormapName
   }) => {
     const refRecording = useRef(recording)
     refRecording.current = recording
 
     const xLengthRef = useRef(xLength)
     xLengthRef.current = xLength
-
-    // ---
-    const seriesConns = useHandleConnections({ type: "target", id: "series" })
-    const seriesSourcesData = useNodesData<BasicPortNode>(
-      seriesConns[0]?.source
-    )
-    const seriesSourcesDataRef = useRef(seriesSourcesData)
-    seriesSourcesDataRef.current = seriesSourcesData
-    // ---
-    const yLabelsConns = useHandleConnections({
-      type: "target",
-      id: "yLabels",
-    })
-    const yLabelsSourcesData = useNodesData<BasicPortNode>(
-      yLabelsConns[0]?.source
-    )
-    const yLabelsSourcesDataRef = useRef(yLabelsSourcesData)
-    yLabelsSourcesDataRef.current = yLabelsSourcesData
-    // ---
 
     const plotZRef = useRef<number[][]>([])
     const yLabelsRef = useRef<Float32Array | undefined>()
@@ -216,44 +201,11 @@ const GraphWrapper = memo(
       yLabelsRef.current = yLabels
     }, [])
 
-    useEffect(() => {
-      const portName = yLabelsSourcesData?.data?.port.name
-      if (!graphEndpoint || !portName) {
-        return
-      }
-
-      graphEndpoint.fetchOutputValues(portName)
-        .then(values => {
-          onYLabelsCallback(values)
-        })
-        .catch(error => {
-          console.error(error)
-        })
-    }, [graphEndpoint, yLabelsSourcesData, onYLabelsCallback])
-
-    useEffect(() => {
-      if (!graphEndpoint) {
-        return
-      }
-
-      const onOutputCallback = (portData: PortData) => {
-        if (
-          seriesSourcesDataRef.current?.data.port.name === portData.portName
-        ) {
-          onSeriesCallback(portData.values)
-        } else if (
-          yLabelsSourcesDataRef.current?.data.port.name === portData.portName
-        ) {
-          onYLabelsCallback(portData.values)
-        }
-      }
-
-      graphEndpoint.addOutputCallback(onOutputCallback)
-
-      return () => {
-        graphEndpoint.removeOutputCallback(onOutputCallback)
-      }
-    }, [graphEndpoint, onSeriesCallback, onYLabelsCallback])
+    // Solid edges ($output ports) or dashed edges (engine node outputs via
+    // the inspector: series rows since the last sample, latest y labels).
+    useEditorInput(graphEndpoint, "series", onSeriesCallback)
+    // Labels rarely change: also take the value the port holds now.
+    useEditorInput(graphEndpoint, "yLabels", onYLabelsCallback, SNAPSHOT_WATCH, { current: true })
 
     return (
       <div style={{ width: graphWidth, height: graphHeight }}>
@@ -268,6 +220,7 @@ const GraphWrapper = memo(
           type={plotType}
           zMin={zMin}
           zMax={zMax}
+          colormap={colormap}
         />
         <div
           css={{
@@ -290,12 +243,15 @@ export type HeatmapGraphNode = Node<{
   graphEndpoint: GraphEndpoint | undefined
   editorModelUpdater: EditorModelUpdater
   nodeData?: {
+    recordOnOpen?: boolean
     graphWidth?: number
     graphHeight?: number
     xLength?: number
     plotType?: "heatmap" | "surface"
     zMin?: number
     zMax?: number
+    // Absent in older graphs -> DEFAULT_COLORMAP (viridis).
+    colormap?: ColormapName
   }
 }>
 
@@ -356,7 +312,8 @@ export const HeatmapGraphNode = memo((props: NodeProps<HeatmapGraphNode>) => {
     [props.id, setNodes]
   )
 
-  const [isRecording, setIsRecording] = useState(false)
+  // recordOnOpen: start recording when the node opens (e.g. pinned monitors).
+  const [isRecording, setIsRecording] = useState(props.data.nodeData?.recordOnOpen === true)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [graphRevision, setGraphRevision] = useState(0)
 
@@ -452,6 +409,12 @@ export const HeatmapGraphNode = memo((props: NodeProps<HeatmapGraphNode>) => {
   const handlePlotTypeChange = (value: "heatmap" | "surface") => {
     updateNodeData({ plotType: value })
     editorModelUpdater.patchNodeData(props.id, { plotType: value })
+  }
+
+  const colormap = resolveColormap(props.data.nodeData?.colormap)
+  const handleColormapChange = (value: ColormapName) => {
+    updateNodeData({ colormap: value })
+    editorModelUpdater.patchNodeData(props.id, { colormap: value })
   }
 
   return (
@@ -569,6 +532,7 @@ export const HeatmapGraphNode = memo((props: NodeProps<HeatmapGraphNode>) => {
           graphHeight={graphHeight}
           zMin={zMin}
           zMax={zMax}
+          colormap={colormap}
         />
         <Button
           css={css({
@@ -654,6 +618,22 @@ export const HeatmapGraphNode = memo((props: NodeProps<HeatmapGraphNode>) => {
               >
                 <MenuItem value="heatmap">Heatmap</MenuItem>
                 <MenuItem value="surface">Surface</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl size="small">
+              <InputLabel>Colormap</InputLabel>
+              <Select
+                value={colormap}
+                label="Colormap"
+                onChange={event => {
+                  handleColormapChange(event.target.value as ColormapName)
+                }}
+              >
+                {COLORMAP_OPTIONS.map(option => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
             <div

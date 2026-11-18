@@ -5,23 +5,20 @@ import {
   NodeResizeControl,
   ResizeParams,
   ResizeDragEvent,
-  useHandleConnections,
-  useNodesData,
 } from "@xyflow/react"
 import { Divider, Paper } from "@mui/material"
-import { memo, useCallback, useEffect, useRef, useState } from "react"
+import { memo, useCallback, useState } from "react"
 import { css } from "@emotion/react"
 
 import {
   GraphEndpoint,
-  PortData,
   PortDataType,
   PortValue,
 } from "nonoha-client-js"
+import { SNAPSHOT_WATCH, useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { NodeHandleLeft } from "@/src/components/node-handle"
-import { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
 import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { SignalLamp } from "@/src/components/signal-lamp"
@@ -92,17 +89,6 @@ type ValueList = {
 const ValuesListDisplay = memo(
   (props: { graphEndpoint: GraphEndpoint | undefined }) => {
     const { graphEndpoint } = props
-    // ---
-    const valuesConns = useHandleConnections({
-      type: "target",
-      id: "values",
-    })
-    const valuesSourcesData = useNodesData<BasicPortNode>(
-      valuesConns[0]?.source,
-    )
-    const valuesSourcesDataRef = useRef(valuesSourcesData)
-    valuesSourcesDataRef.current = valuesSourcesData
-    // ---
 
     const [{ colors }] = useThemeStore()
 
@@ -178,42 +164,20 @@ const ValuesListDisplay = memo(
       })
     }
 
-    useEffect(() => {
-      const portName = valuesSourcesData?.data.port.name
-      if (!graphEndpoint || !portName) {
-        return
-      }
-      graphEndpoint.fetchOutputValues(portName)
-        .then(values => {
-          const updatedLists = updateList(values)
-          setValueLists(updatedLists)
-        })
-        .catch(error => {
-          console.error(error)
-        })
-    }, [graphEndpoint, valuesSourcesData])
-
-    useEffect(() => {
-      if (!graphEndpoint) {
-        return
-      }
-
-      const onOutputCallback = (output: PortData) => {
-        if (valuesSourcesDataRef.current?.data.port.name !== output.portName) {
-          return
-        }
-
-        const updatedList = updateList(output.values)
+    // Solid edge ($output port) or dashed edge (engine node: latest value
+    // sampled by the inspector).
+    useEditorInput(
+      graphEndpoint,
+      "values",
+      (values: PortValue[]) => {
+        const updatedList = updateList(values)
         setValueLists(updatedList)
         setTriggerCount(prev => prev + 1)
-      }
-
-      graphEndpoint.addOutputCallback(onOutputCallback)
-
-      return () => {
-        graphEndpoint.removeOutputCallback(onOutputCallback)
-      }
-    }, [graphEndpoint])
+      },
+      SNAPSHOT_WATCH,
+      // The value the port holds now (not counted as a trigger).
+      { current: (values: PortValue[]) => setValueLists(updateList(values)) },
+    )
 
     return (
       <div

@@ -90,20 +90,25 @@ function PortRow({
     )
   }
 
-  // Simple port — single line
+  // Simple port — single line. A port that accepts one value of several
+  // types lists them after "one of".
+  const accepts = port.accepts && port.accepts.length > 0 ? port.accepts : null
   return (
-    <div css={css({ display: "flex", alignItems: "baseline", gap: 6, minHeight: 20, paddingLeft: 4 })}>
+    <div css={css({ display: "flex", alignItems: "baseline", gap: 6, minHeight: 20, paddingLeft: 4, flexWrap: accepts ? "wrap" : undefined })}>
       <span
         css={css({
           width: 7, height: 7, borderRadius: 1,
-          backgroundColor: getPortColor(port.types[0] || "any", pallet),
+          backgroundColor: getPortColor((accepts ?? port.types)[0] || "any", pallet),
           flexShrink: 0, alignSelf: "center",
         })}
       />
       <span css={css({ fontSize: 12, fontWeight: 500, color: colors.onSurface, flexShrink: 0, whiteSpace: "nowrap" })}>
         {port.name}
       </span>
-      {port.types.map((t, i) => (
+      {accepts && (
+        <span css={css({ fontSize: 10, color: colors.onSurfaceVariant, flexShrink: 0 })}>one of</span>
+      )}
+      {(accepts ?? port.types).map((t, i) => (
         <TypeChip key={i} type={t} pallet={pallet} />
       ))}
       {port.description && (

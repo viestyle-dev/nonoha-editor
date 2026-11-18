@@ -10,8 +10,18 @@ export interface NodePrototype {
   id: string
   data: {
     label: string
+    /** Initial editor data saved with the node (settings.json data). */
+    nodeData?: Record<string, unknown>
   }
   type: string
+  /** Menu entry for prototypes that share a node type (e.g. one per view). */
+  catalog?: {
+    key: string
+    label: string
+    category: string
+    description: string
+    inputs: CatalogPortInfo[]
+  }
   style?: {
     width?: number
     height?: number

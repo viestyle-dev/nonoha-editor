@@ -135,6 +135,8 @@ function makeMockEditorModelUpdater() {
     updateNodePosition: vi.fn(),
     updateNodeSize: vi.fn(),
     addEditorNode: vi.fn(),
+    setNodeLabel: vi.fn(),
+    setNodePreview: vi.fn(),
     removeNode: vi.fn(),
     addEditorEdge: vi.fn(),
     removeEditorEdge: vi.fn(),

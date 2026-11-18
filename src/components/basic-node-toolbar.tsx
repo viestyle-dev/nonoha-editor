@@ -1,4 +1,4 @@
-import { memo } from "react"
+import { memo, ReactNode } from "react"
 import { useThemeStore } from "../stores/theme-store"
 import { NodeToolbar, useReactFlow } from "@xyflow/react"
 import { css } from "@emotion/react"
@@ -8,6 +8,8 @@ import { Clear } from "@mui/icons-material"
 interface BasicNodeToolbarProps {
   nodeId: string
   isVisible?: boolean
+  /** Extra buttons shown before the delete button. */
+  children?: ReactNode
 }
 
 export const BasicNodeToolbar = memo((props: BasicNodeToolbarProps) => {
@@ -22,8 +24,11 @@ export const BasicNodeToolbar = memo((props: BasicNodeToolbarProps) => {
         css={css({
           backgroundColor: alpha(colors.surfaceContainerLow, 0.75),
           padding: 4,
+          display: "flex",
+          alignItems: "center",
         })}
       >
+        {props.children}
         <IconButton
           color="error"
           size="small"

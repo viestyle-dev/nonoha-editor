@@ -5,8 +5,6 @@ import {
   Node,
   NodeProps,
   useReactFlow,
-  useHandleConnections,
-  useNodesData,
 } from "@xyflow/react"
 import {
   Button,
@@ -19,16 +17,15 @@ import {
 import { css } from "@emotion/react"
 import {
   GraphEndpoint,
-  PortData,
   PortDataType,
   PortValue,
 } from "nonoha-client-js"
+import { READOUT_WATCH, useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { NodeHandleLeft } from "@/src/components/node-handle"
-import { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
 import { ExpandLess, ExpandMore } from "@mui/icons-material"
 import { SignalLamp } from "@/src/components/signal-lamp"
 
@@ -45,12 +42,6 @@ const BytesDisplay = memo(
 
     const refBytesPerRow = useRef(bytesPerRow)
     refBytesPerRow.current = bytesPerRow
-
-    // Handle connections
-    const valuesConns = useHandleConnections({ type: "target", id: "values" })
-    const valuesSourceData = useNodesData<BasicPortNode>(valuesConns[0]?.source)
-    const valuesSourceDataRef = useRef(valuesSourceData)
-    valuesSourceDataRef.current = valuesSourceData
 
     const [errorMessage, setErrorMessage] = useState<string | undefined>(
       undefined
@@ -136,42 +127,18 @@ const BytesDisplay = memo(
       setTriggerCount(prev => prev + 1)
     }, [targetIndex, bytesPerRow, updateDisplay])
 
-    // Fetch initial data
-    useEffect(() => {
-      const portName = valuesSourceData?.data.port.name
-      if (!graphEndpoint || !portName) {
-        return
-      }
-
-      graphEndpoint.fetchOutputValues(portName)
-        .then(values => {
-          refCurrentPortValues.current = values
-          updateDisplay(values)
-        })
-        .catch(error => {
-          console.error(error)
-        })
-    }, [valuesSourceData, graphEndpoint, updateDisplay])
-
-    // Subscribe to output updates
-    useEffect(() => {
-      if (!graphEndpoint) {
-        return
-      }
-
-      const onOutputCallback = (output: PortData) => {
-        if (valuesSourceDataRef.current?.data.port.name !== output.portName) {
-          return
-        }
-        refCurrentPortValues.current = output.values
-        updateDisplay(output.values)
-      }
-
-      graphEndpoint.addOutputCallback(onOutputCallback)
-      return () => {
-        graphEndpoint.removeOutputCallback(onOutputCallback)
-      }
-    }, [graphEndpoint, updateDisplay])
+    // Subscribe to updates: solid edge ($output port) or dashed edge (engine
+    // node: latest value sampled by the inspector).
+    useEditorInput(
+      graphEndpoint,
+      "values",
+      (values: PortValue[]) => {
+        refCurrentPortValues.current = values
+        updateDisplay(values)
+      },
+      READOUT_WATCH,
+      { current: true },
+    )
 
     const [{ colors }] = useThemeStore()
 

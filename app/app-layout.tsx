@@ -1,6 +1,7 @@
 "use client"
 
 import { EngineGatewayStateProvider } from "../src/stores/engine-gateway-store"
+import { EngineCapabilitiesProvider } from "@/src/stores/engine-capabilities-store"
 import { NodeFlowColorsStoreProvider } from "@/src/stores/node-flow-colors-store"
 import { RouterStoreProvider } from "@/src/stores/router-store"
 import { useThemeStore } from "@/src/stores/theme-store"
@@ -50,7 +51,9 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     >
       <RouterStoreProvider>
         <EngineGatewayStateProvider>
-          <NodeFlowColorsStoreProvider>{children}</NodeFlowColorsStoreProvider>
+          <EngineCapabilitiesProvider>
+            <NodeFlowColorsStoreProvider>{children}</NodeFlowColorsStoreProvider>
+          </EngineCapabilitiesProvider>
         </EngineGatewayStateProvider>
       </RouterStoreProvider>
     </SnackbarProvider>
