@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import type { InspectorPortRef, WatchCallbacks, WatchHandle, WatchOptions } from "nonoha-client-js"
-import { EditorInspector, portKey } from "../inspector-store"
+import type { ActivityEntry, InspectorPortRef, WatchCallbacks, WatchHandle, WatchOptions } from "nonoha-client-js"
+import { EditorInspector, isFlowing, portKey, sourceActivityRef } from "../inspector-store"
 
 const REF: InspectorPortRef = { node: "Cam_1", dir: "out", port: "frame" }
 
@@ -60,5 +60,38 @@ describe("EditorInspector", () => {
       return got
     })
     expect(again).toEqual([true, true, true, false]) // 5 held of 8: no slot leaked to a stale listener
+  })
+})
+
+describe("port activity", () => {
+  function entry(hz: number): ActivityEntry {
+    return { ref: REF, count: 3, hz, age: 0.1, dtype: "u8", shape: [1, 2], stats: null, last: null }
+  }
+
+  it("flows while the engine reports a rate, and tells the port's listeners when it changes", () => {
+    const inspector = new EditorInspector("localhost:8000", "g")
+    let current: ActivityEntry | undefined
+    ;(inspector as unknown as { client: unknown }).client = { activityOf: () => current, close() {} }
+    const onActivity = (inspector as unknown as { onActivity(changed: ActivityEntry[]): void }).onActivity.bind(inspector)
+    let notified = 0
+    inspector.subscribePort(portKey(REF), () => notified++)
+    const flowing = () => isFlowing(inspector.activityOf(REF))
+
+    expect(flowing()).toBe(false) // no entry yet
+    current = entry(2)
+    onActivity([current])
+    expect(flowing()).toBe(true)
+    current = entry(0) // stopped, or the first value after a stop (no rate yet)
+    onActivity([current])
+    expect(flowing()).toBe(false)
+    expect(notified).toBe(2)
+  })
+
+  it("finds the port behind an edge's source", () => {
+    expect(sourceActivityRef("Cam_1", "frame")).toEqual({ node: "Cam_1", dir: "out", port: "frame" })
+    expect(sourceActivityRef("$input:frame", null)).toEqual({ node: "", dir: "in", port: "frame" })
+    expect(sourceActivityRef("$output:audio", null)).toEqual({ node: "", dir: "out", port: "audio" })
+    expect(sourceActivityRef("$editor:Fader_1", "value")).toBeNull()
+    expect(sourceActivityRef("Cam_1", null)).toBeNull()
   })
 })

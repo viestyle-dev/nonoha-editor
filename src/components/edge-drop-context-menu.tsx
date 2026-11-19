@@ -5,7 +5,7 @@ import { GraphEndpoint } from "nonoha-client-js"
 import { PortAddDialog } from "@/src/components/node-add-menu/NodeAddDialog"
 import type { BasicEngineNode } from "@/src/nodes/engine-nodes/basic-engine-node"
 import { useViewCatalog, viewsForPort } from "@/src/views/view-catalog"
-import { useInspectorState } from "@/src/inspector/inspector-store"
+import { useInspectorLive } from "@/src/inspector/inspector-store"
 
 export interface EdgeDropMenuState {
   screenPosition: { x: number; y: number }
@@ -79,7 +79,7 @@ export function EdgeDropContextMenu({
 }: EdgeDropContextMenuProps) {
   const { getNode } = useReactFlow()
   const catalog = useViewCatalog()
-  const { supported, enabled } = useInspectorState()
+  const inspectorLive = useInspectorLive()
   const [dialogOpen, setDialogOpen] = useState(false)
 
   // Determine port type: dragging from source handle → create output port
@@ -96,13 +96,13 @@ export function EdgeDropContextMenu({
   // Views whose inputs accept the dragged output (best suited first).
   const viewSuggestions = useMemo(() => {
     if (!state || state.sourceHandleType !== "source" || !state.sourceHandleId || !onViewSelected) return []
-    if (!supported || !enabled) return []
+    if (!inspectorLive) return []
     const sourceNode = getNode(state.sourceNodeId) as BasicEngineNode | undefined
     if (!sourceNode?.data?.nodeData) return []
     const firstType = initialValueTypeList.split(",")[0]?.trim()
     if (!firstType) return []
     return viewsForPort(catalog, sourceNode.data.nodeData.type, state.sourceHandleId, firstType).slice(0, 5)
-  }, [state, getNode, catalog, initialValueTypeList, onViewSelected, supported, enabled])
+  }, [state, getNode, catalog, initialValueTypeList, onViewSelected, inspectorLive])
 
   const handleMenuClick = () => {
     setDialogOpen(true)

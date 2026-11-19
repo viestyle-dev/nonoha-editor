@@ -1,33 +1,49 @@
-import { Clear, Output, WarningAmber } from "@mui/icons-material"
+import { Clear, Link, LinkOff, Output, VisibilityOutlined, WarningAmber } from "@mui/icons-material"
 import { IconButton, Paper, Tooltip } from "@mui/material"
 import {
+  ConnectionLineComponentProps,
   EdgeProps,
+  Position,
+  ReactFlowState,
   useReactFlow,
   useStore,
+  useStoreApi,
   Node,
-  EdgeLabelRenderer,
 } from "@xyflow/react"
-import { useCallback, useMemo } from "react"
+import { MouseEvent, useCallback, useMemo } from "react"
 import { getEditorEdgeId } from "../api/editor-model-updater"
 import { getNodeType } from "../stores/node-flow-store"
 import { BasicPortNode } from "../nodes/engine-nodes/basic-port-node"
 import { BasicEngineNode } from "../nodes/engine-nodes/basic-engine-node"
-import { hexFromArgb } from "@material/material-color-utilities"
-import {
-  getHctFromPortValueType,
-  useNodeFlowColorsStore,
-} from "../stores/node-flow-colors-store"
+import { useNodeFlowColorsStore } from "../stores/node-flow-colors-store"
+import { edgeColors } from "../lib/graph/port-colors"
 import { useThemeStore } from "../stores/theme-store"
 import { useGraphSessionStore } from "../stores/graph-session-store"
-import { WAYPOINT_SIZE } from "../nodes/editor-nodes/waypoint-node"
-import { buildEdgePath, edgeMidpoint, findInsertionIndex, type Point } from "../lib/graph/edge-path"
-import { useInspector, usePortProblem } from "../inspector/inspector-store"
+import { generateWaypointId, waypointNode } from "../nodes/editor-nodes/waypoint-node"
+import {
+  buildEdgePath,
+  edgeMidpoint,
+  findInsertionIndex,
+  samePoints,
+  waypointCenter,
+  type Point,
+} from "../lib/graph/edge-path"
+import { edgeWeight } from "../lib/graph/edge-weight"
+import { edgeDrawings, type DrawAs } from "../lib/graph/edge-drawing"
+import { drawAsOf, EdgeLabelPortal, useEdgeDrawing, useOutputMarks } from "../hooks/use-edge-drawing"
+import {
+  sourceActivityRef,
+  useInspector,
+  useInspectorObserving,
+  usePortFlowing,
+  usePortProblem,
+} from "../inspector/inspector-store"
 
-const WAYPOINT_HALF = WAYPOINT_SIZE / 2
-
-function generateWaypointId(): string {
-  return `$wp:${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
-}
+const NO_POINTS: Point[] = []
+/** Hidden until the edge's nodes are selected (EdgeFocus shows it): references and displays. */
+export const HIDDEN_EDGE_CLASS = "edge-hidden"
+/** An edge whose source port stopped recedes (selected or highlighted, it shows in full). */
+const OPACITY_STOPPED = 0.5
 
 /** Helper to persist an edge's full data to the server. */
 function persistEdge(
@@ -61,7 +77,8 @@ export default function BasicNodeEdge({
   targetY,
   ...props
 }: EdgeProps) {
-  const { setNodes, setEdges, getNode, screenToFlowPosition, deleteElements } = useReactFlow()
+  const { setNodes, setEdges, getNode, screenToFlowPosition, deleteElements, setCenter, getZoom } = useReactFlow()
+  const store = useStoreApi()
   const [{ colors }] = useThemeStore()
   const isValid = (props.data as Record<string, unknown>)?.valid !== false
   const isHighlighted = (props.data as Record<string, unknown>)?.highlighted === true
@@ -84,7 +101,8 @@ export default function BasicNodeEdge({
     [props.source, props.sourceHandleId, props.target, props.targetHandleId],
   )
 
-  const [sourceColor, targetColor] = useMemo(() => {
+  // The ports' declared types (static: they change only when the graph does)
+  const [sourceType, targetType] = useMemo(() => {
     const sourceNode = getNode(props.source)
     const targetNode = getNode(props.target)
 
@@ -123,49 +141,87 @@ export default function BasicNodeEdge({
     }
     const sourceValues = getValues(sourceNode, props.sourceHandleId, undefined)
     const targetValues = getValues(targetNode, undefined, props.targetHandleId)
+    return [sourceValues?.[0]?.type, targetValues?.[0]?.type] as const
+  }, [getNode, props.source, props.target, props.sourceHandleId, props.targetHandleId])
+  const colorsAlong = useMemo(
+    () => edgeColors(sourceType, targetType, flowColorsState.pallet),
+    [sourceType, targetType, flowColorsState.pallet],
+  )
+  const gradient = colorsAlong !== null && colorsAlong[0] !== colorsAlong[1]
 
-    const sourceType = sourceValues?.[0]?.type
-    const targetType = targetValues?.[0]?.type
-    const sourceColor =
-      sourceType &&
-      hexFromArgb(
-        getHctFromPortValueType(sourceType, flowColorsState.pallet).toInt()
-      )
-    const targetColor =
-      targetType &&
-      hexFromArgb(
-        getHctFromPortValueType(targetType, flowColorsState.pallet).toInt()
-      )
-    if (sourceColor && targetColor) {
-      return [sourceColor, targetColor]
-    }
-    if (sourceColor && !targetColor) {
-      return [sourceColor, sourceColor]
-    }
-    if (!sourceColor && targetColor) {
-      return [targetColor, targetColor]
-    }
-    return [undefined, undefined]
-  }, [getNode, props.source, props.target, props.sourceHandleId, props.targetHandleId, flowColorsState.pallet])
+  // Whether values flow along it now (the inspector's activity of the source port)
+  const observing = useInspectorObserving()
+  const flowRef = useMemo(
+    () => (observing ? sourceActivityRef(props.source, props.sourceHandleId) : null),
+    [observing, props.source, props.sourceHandleId],
+  )
+  const flowing = usePortFlowing(flowRef)
+  const stopped = flowRef !== null && !flowing
 
-  // Resolve waypoints from React Flow store (reactive to position changes)
+  // Drawn as a line, or as a reference / display (tags at the ends; the line
+  // only while its nodes are selected). See edge-drawing.ts.
+  const drawing = useEdgeDrawing(id)
+  const drawnAsLine = drawing === "line"
+  const outputMarks = useOutputMarks(id, props.source, props.sourceHandleId)
+  const sourceName = useMemo(() => {
+    if (props.source.startsWith("$input:") || props.source.startsWith("$output:")) {
+      return props.source.slice(props.source.indexOf(":") + 1)
+    }
+    const label = (getNode(props.source)?.data as { label?: string } | undefined)?.label ?? props.source
+    return props.sourceHandleId ? `${label}.${props.sourceHandleId}` : label
+  }, [getNode, props.source, props.sourceHandleId])
+
+  /** Select the source node (its references show), and with `center` go to it. */
+  const selectSource = useCallback(
+    (event: MouseEvent, center: boolean) => {
+      event.stopPropagation()
+      setNodes(nodes =>
+        nodes.map(node => (Boolean(node.selected) === (node.id === props.source) ? node : { ...node, selected: node.id === props.source })),
+      )
+      setEdges(edges => edges.map(edge => (edge.selected ? { ...edge, selected: false } : edge)))
+      if (center) setCenter(sourceX, sourceY, { zoom: getZoom(), duration: 300 })
+    },
+    [props.source, setNodes, setEdges, setCenter, getZoom, sourceX, sourceY],
+  )
+
+  /** Draw the source output's data edges as `next`; equal to the rule, the override is dropped. */
+  const setOutputDrawing = useCallback(
+    (next: DrawAs) => {
+      const state = store.getState()
+      const handle = props.sourceHandleId ?? ""
+      const others = drawAsOf(state)
+      const rule = edgeDrawings(state.edges, (source, sourceHandle) =>
+        source === props.source && (sourceHandle ?? "") === handle ? undefined : others(source, sourceHandle),
+      ).of.get(id)
+      const current = (state.nodeLookup.get(props.source)?.data as { drawAs?: Record<string, DrawAs> } | undefined)?.drawAs
+      const updated: Record<string, DrawAs> = { ...current }
+      if (next === rule) delete updated[handle]
+      else updated[handle] = next
+      const drawAs = Object.keys(updated).length > 0 ? updated : undefined
+      setNodes(nodes => nodes.map(node => (node.id === props.source ? { ...node, data: { ...node.data, drawAs } } : node)))
+      editorModelUpdater?.setNodeDrawAs(props.source, drawAs ?? null)
+    },
+    [store, id, props.source, props.sourceHandleId, setNodes, editorModelUpdater],
+  )
+
+  // Waypoints from the React Flow store: re-renders only when one of them moves.
+  // The selector runs on every pan frame; it does nothing while the nodes are the same.
   const resolvedWaypoints = useStore(
-    useCallback(
-      (state) => {
-        if (waypointIds.length === 0) return []
+    useMemo(() => {
+      let nodes: unknown = null
+      let points: Point[] = NO_POINTS
+      return (state: ReactFlowState) => {
+        if (waypointIds.length === 0 || state.nodes === nodes) return points
+        nodes = state.nodes
         const result: Point[] = []
         for (const wpId of waypointIds) {
           const wpNode = state.nodeLookup.get(wpId)
-          if (wpNode) {
-            // Use positionAbsolute + half size to center edge on waypoint
-            const pos = wpNode.internals.positionAbsolute
-            result.push({ x: pos.x + WAYPOINT_HALF, y: pos.y + WAYPOINT_HALF })
-          }
+          if (wpNode) result.push(waypointCenter(wpNode.internals.positionAbsolute))
         }
-        return result
-      },
-      [waypointIds],
-    ),
+        if (!samePoints(result, points)) points = result
+        return points
+      }
+    }, [waypointIds]),
   )
 
   const edgePath = useMemo(() => {
@@ -225,18 +281,8 @@ export default function BasicNodeEdge({
         y: flowPos.y - graphOffset.y,
       }
 
-      // Add waypoint as a React Flow node
-      setNodes(nodes => [
-        ...nodes,
-        {
-          id: wpId,
-          type: "WaypointNode",
-          position: relativePos,
-          parentId: "$graph",
-          data: {},
-          zIndex: 2000,
-        },
-      ])
+      // Add a waypoint centered where the edge was clicked
+      setNodes(nodes => [...nodes, waypointNode(wpId, relativePos)])
 
       // Update this edge's waypointIds
       setEdges(edges =>
@@ -269,48 +315,38 @@ export default function BasicNodeEdge({
     ],
   )
 
+  const weight = edgeWeight(sourceType ?? targetType)
+  const stroke = props.selected || isHighlighted
+    ? colors.tertiary
+    : !isValid
+      ? colors.error
+      : colorsAlong === null
+        ? colors.outline
+        : gradient
+          ? `url(#gradient-${id})`
+          : colorsAlong[0]
+
   return (
     <>
-      <defs>
-        <linearGradient
-          id={`gradient-${id}`}
-          gradientUnits="userSpaceOnUse"
-          x1={sourceX}
-          y1={sourceY}
-          x2={targetX}
-          y2={targetY}
-        >
-          <stop
-            offset="0%"
-            stopColor={
-              props.selected
-                ? colors.tertiary
-                : isValid
-                  ? sourceColor
-                  : colors.error
-            }
-          />
-          <stop
-            offset="100%"
-            stopColor={
-              props.selected
-                ? colors.tertiary
-                : isValid
-                  ? targetColor
-                  : colors.error
-            }
-          />
-        </linearGradient>
-      </defs>
+      {gradient && (
+        <defs>
+          <linearGradient id={`gradient-${id}`} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}>
+            <stop offset="0%" stopColor={colorsAlong[0]} />
+            <stop offset="100%" stopColor={colorsAlong[1]} />
+          </linearGradient>
+        </defs>
+      )}
       <path
         id={id}
         d={edgePath}
         fill="none"
-        stroke={isHighlighted ? colors.tertiary : `url(#gradient-${id})`}
-        strokeWidth={isHighlighted ? 5 : isMonitor ? 3 : isValid ? 4 : 3}
-        strokeDasharray={!isValid ? "8 4" : isMonitor ? "1 7" : undefined}
+        stroke={stroke}
+        strokeWidth={isHighlighted ? weight + 1.5 : isMonitor ? Math.min(weight, 3) : weight}
+        strokeDasharray={!isValid ? "8 4" : isMonitor ? "1 7" : drawnAsLine ? undefined : "6 6"}
         strokeLinecap={isMonitor ? "round" : undefined}
-        opacity={1.0}
+        opacity={stopped && !props.selected && !isHighlighted ? OPACITY_STOPPED : 1}
+        style={{ transition: "opacity 0.3s" }}
+        className={drawnAsLine ? undefined : HIDDEN_EDGE_CLASS}
         onDoubleClick={handleEdgeDoubleClick}
       />
       {/* Wider invisible path for easier double-click targeting */}
@@ -319,10 +355,60 @@ export default function BasicNodeEdge({
         fill="none"
         stroke="transparent"
         strokeWidth={20}
+        className={drawnAsLine ? undefined : HIDDEN_EDGE_CLASS}
         onDoubleClick={handleEdgeDoubleClick}
       />
-      {problem && !props.selected && (
-        <EdgeLabelRenderer>
+      {!drawnAsLine && (
+        <EdgeLabelPortal>
+          {/* The source's name at the target's input, with a stub of the line */}
+          <div
+            className="nodrag nopan"
+            style={{
+              position: "absolute",
+              transform: `translate(-100%, -50%) translate(${targetX - 6}px,${targetY}px)`,
+              pointerEvents: "all",
+              zIndex: 1000,
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <Tooltip title={problem ?? `${drawing === "display" ? "Shows" : "From"} ${sourceName} (click to go there)`} placement="top">
+              <button
+                type="button"
+                onClick={event => selectSource(event, true)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 3,
+                  maxWidth: 160,
+                  padding: "0 6px",
+                  font: "inherit",
+                  fontSize: 10,
+                  lineHeight: "16px",
+                  color: problem ? colors.error : colors.onSurface,
+                  background: colors.surfaceContainerHigh,
+                  border: `1px solid ${problem ? colors.error : (colorsAlong?.[0] ?? colors.outline)}`,
+                  borderRadius: 8,
+                  cursor: "pointer",
+                }}
+              >
+                {problem && <WarningAmber style={{ fontSize: 12 }} />}
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sourceName}</span>
+              </button>
+            </Tooltip>
+            <span style={{ width: 6, height: 2, background: colorsAlong?.[1] ?? colors.outline }} />
+          </div>
+        </EdgeLabelPortal>
+      )}
+      {outputMarks && <OutputMarks
+        marks={outputMarks}
+        x={sourceX}
+        y={sourceY}
+        color={colorsAlong?.[0] ?? colors.outline}
+        onClick={event => selectSource(event, false)}
+      />}
+      {problem && drawnAsLine && !props.selected && (
+        <EdgeLabelPortal>
           <div
             className="nodrag nopan"
             style={{
@@ -340,10 +426,10 @@ export default function BasicNodeEdge({
               />
             </Tooltip>
           </div>
-        </EdgeLabelRenderer>
+        </EdgeLabelPortal>
       )}
       {props.selected && (
-        <EdgeLabelRenderer>
+        <EdgeLabelPortal>
           <div
             className="nodrag nopan"
             style={{
@@ -359,6 +445,23 @@ export default function BasicNodeEdge({
                   <WarningAmber fontSize="small" aria-label={problem} style={{ color: colors.error, margin: 5 }} />
                 </Tooltip>
               )}
+              {drawing !== "display" && (
+                <Tooltip
+                  title={
+                    drawnAsLine
+                      ? "Draw this output as references: name tags at both ends, the lines only while selected"
+                      : "Draw this output as lines"
+                  }
+                >
+                  <IconButton
+                    size="small"
+                    onClick={() => setOutputDrawing(drawnAsLine ? "reference" : "line")}
+                    aria-label={drawnAsLine ? "Draw as references" : "Draw as lines"}
+                  >
+                    {drawnAsLine ? <LinkOff fontSize="small" /> : <Link fontSize="small" />}
+                  </IconButton>
+                </Tooltip>
+              )}
               {isMonitor && inspector?.promoteHandler && (
                 <Tooltip title="Make output port: every value, also available to apps">
                   <IconButton size="small" onClick={handlePromote} aria-label="Make output port">
@@ -371,8 +474,83 @@ export default function BasicNodeEdge({
               </IconButton>
             </Paper>
           </div>
-        </EdgeLabelRenderer>
+        </EdgeLabelPortal>
       )}
     </>
   )
+}
+
+/**
+ * At an output whose edges are references or displays: how many go where
+ * (the tag-shaped count for references, the eye for displays). Clicking it
+ * selects the node, which shows them.
+ */
+function OutputMarks({
+  marks,
+  x,
+  y,
+  color,
+  onClick,
+}: {
+  marks: string
+  x: number
+  y: number
+  color: string
+  onClick: (event: MouseEvent) => void
+}) {
+  const [{ colors }] = useThemeStore()
+  const [references, displays] = marks.split("|").map(Number)
+  const pill = {
+    display: "flex",
+    alignItems: "center",
+    gap: 2,
+    padding: "0 5px",
+    fontSize: 10,
+    lineHeight: "14px",
+    borderRadius: 7,
+    background: colors.surfaceContainerHigh,
+    fontVariantNumeric: "tabular-nums",
+  } as const
+  return (
+    <EdgeLabelPortal>
+      <div
+        className="nodrag nopan"
+        onClick={onClick}
+        style={{
+          position: "absolute",
+          transform: `translate(0, -50%) translate(${x + 10}px,${y}px)`,
+          pointerEvents: "all",
+          zIndex: 1000,
+          display: "flex",
+          gap: 3,
+          cursor: "pointer",
+        }}
+      >
+        {references > 0 && (
+          <Tooltip title={`Also used at ${references} input${references > 1 ? "s" : ""} (shown by name there; select to see the lines)`}>
+            <span style={{ ...pill, color: colors.onSurface, border: `1px solid ${color}` }}>→ {references}</span>
+          </Tooltip>
+        )}
+        {displays > 0 && (
+          <Tooltip title={`Shown by ${displays} display${displays > 1 ? "s" : ""}`}>
+            <span style={{ ...pill, color: colors.onSurfaceVariant, border: `1px solid ${colors.outlineVariant}` }}>
+              <VisibilityOutlined style={{ fontSize: 11 }} />
+              {displays}
+            </span>
+          </Tooltip>
+        )}
+      </div>
+    </EdgeLabelPortal>
+  )
+}
+
+/**
+ * The line drawn while a connection is dragged: the same curve as an edge
+ * (from the output side), so it keeps its shape when dropped.
+ */
+export function EdgeConnectionLine({ fromX, fromY, toX, toY, fromPosition }: ConnectionLineComponentProps) {
+  const from = { x: fromX, y: fromY }
+  const to = { x: toX, y: toY }
+  const d = fromPosition === Position.Left ? buildEdgePath(to, from, NO_POINTS) : buildEdgePath(from, to, NO_POINTS)
+  return <path className="react-flow__connection-path" d={d} fill="none" />
 }

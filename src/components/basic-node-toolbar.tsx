@@ -13,13 +13,20 @@ interface BasicNodeToolbarProps {
 }
 
 export const BasicNodeToolbar = memo((props: BasicNodeToolbarProps) => {
-  const { nodeId, isVisible } = props
+  // Not even mounted while hidden: React Flow's NodeToolbar follows the
+  // viewport (every pan frame) whether it shows or not
+  if (!props.isVisible) return null
+  return <ShownNodeToolbar {...props} />
+})
+
+function ShownNodeToolbar(props: BasicNodeToolbarProps) {
+  const { nodeId } = props
   const [{ colors }] = useThemeStore()
 
   const { deleteElements } = useReactFlow()
 
   return (
-    <NodeToolbar isVisible={isVisible} offset={8} align="end">
+    <NodeToolbar isVisible offset={8} align="end">
       <div
         css={css({
           backgroundColor: alpha(colors.surfaceContainerLow, 0.75),
@@ -44,4 +51,4 @@ export const BasicNodeToolbar = memo((props: BasicNodeToolbarProps) => {
       </div>
     </NodeToolbar>
   )
-})
+}

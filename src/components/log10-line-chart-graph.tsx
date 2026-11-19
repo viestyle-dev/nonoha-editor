@@ -367,7 +367,7 @@ export default function Log10LineChartGraph(props: Log10LineChartGraphProps) {
       buildTraces(plotDataRef.current, themeRef.current),
       refLayout.current
     )
-  })
+  }, refPlot)
 
   useEffect(() => {
     painter.schedule()

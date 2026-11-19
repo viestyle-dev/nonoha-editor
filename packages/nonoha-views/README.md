@@ -118,7 +118,7 @@ reads `ctx.settings` as is:
 | `ctx` | Meaning |
 |---|---|
 | `onValues(input, (values, info) => …)` | Values of one input, batch first. Valid during the callback only: the host may reuse the arrays (and `info`), so copy what you keep. `info.steps`: per value, the stride of each non-batch dimension (empty when whole); `info.gap`: items were lost before these. Returns a function that stops the callback |
-| `requestFrame(draw)` | Runs `draw` on the next animation frame; requests within a frame coalesce. Draw here, not in `onValues` |
+| `requestFrame(draw)` | Runs `draw` on the next animation frame; requests within a frame coalesce. Draw here, not in `onValues`. While the view is off screen the draw waits and runs on the first frame it shows again (values keep arriving) |
 | `settings`, `theme`, `size` | Current values (`theme`: colors, `series`, `fontFamily`, `isDark`) |
 
 Hooks returned by `mount`: `resize(width, height)`, `settingsChanged(settings)`,

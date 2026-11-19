@@ -92,6 +92,25 @@ export function makeEditorModelUpdater(
         })
     },
 
+    /**
+     * How a node's outputs are drawn against the rule (edge-drawing.ts):
+     * output name ("" for a graph port) -> "line" | "reference"; null clears.
+     */
+    setNodeDrawAs(nodeName: string, drawAs: Record<string, "line" | "reference"> | null) {
+      promiseChain = promiseChain
+        .then(() =>
+          fetch(`${editorModelUrl}?query=nodes.${nodeName}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ drawAs }),
+          })
+        )
+        .then(() => {})
+        .catch(error => {
+          console.log(error)
+        })
+    },
+
     /** Set a display title for an editor node (shown instead of its id). */
     setNodeLabel(nodeName: string, label: string) {
       promiseChain = promiseChain

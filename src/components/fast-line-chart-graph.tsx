@@ -670,7 +670,7 @@ const FastLineChartGraph = forwardRef<
     }
   }, [buildData, buildOptions])
 
-  const painter = useRafPainter(paint)
+  const painter = useRafPainter(paint, containerRef)
 
   // Data update: only schedule; the painter draws on the next frame.
   useEffect(() => {

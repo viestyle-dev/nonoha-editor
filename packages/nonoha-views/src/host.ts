@@ -79,9 +79,21 @@ export function createViewHost(view: DefinedView, element: HTMLElement, options:
   let pending: (() => void)[] = []
   let running: (() => void)[] = []
   let destroyed = false
+  // Draws wait while the element is off screen (scrolled or panned away): a
+  // canvas that redraws there still costs the browser a frame of compositing.
+  // Values keep arriving, so the first frame back shows the latest state.
+  let visible = true
+  const observer =
+    typeof IntersectionObserver === 'undefined'
+      ? null
+      : new IntersectionObserver(entries => {
+          visible = entries[entries.length - 1].isIntersecting
+          if (visible && pending.length > 0 && frame === null && !destroyed) frame = requestAnimationFrame(runFrame)
+        })
 
   const runFrame = () => {
     frame = null
+    if (!visible) return // the draws stay pending until the element shows
     const draws = pending
     pending = running
     running = draws
@@ -107,7 +119,7 @@ export function createViewHost(view: DefinedView, element: HTMLElement, options:
     requestFrame(draw) {
       if (destroyed) return
       if (pending.indexOf(draw) < 0) pending.push(draw)
-      if (frame === null) frame = requestAnimationFrame(runFrame)
+      if (frame === null && visible) frame = requestAnimationFrame(runFrame)
     },
     get settings() {
       return settings
@@ -126,6 +138,7 @@ export function createViewHost(view: DefinedView, element: HTMLElement, options:
   } catch (error) {
     report(error)
   }
+  observer?.observe(element)
 
   return {
     deliver(input, values, info = WHOLE) {
@@ -155,6 +168,7 @@ export function createViewHost(view: DefinedView, element: HTMLElement, options:
     },
     destroy() {
       destroyed = true
+      observer?.disconnect()
       if (frame !== null) cancelAnimationFrame(frame)
       frame = null
       pending.length = 0

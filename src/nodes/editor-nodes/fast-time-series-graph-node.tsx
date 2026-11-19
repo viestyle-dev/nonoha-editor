@@ -5,8 +5,8 @@ import {
   Node,
   NodeProps,
   useReactFlow,
-  useViewport,
 } from "@xyflow/react"
+import { useZoom } from "@/src/hooks/use-zoom"
 import {
   alpha,
   Button,
@@ -28,6 +28,7 @@ import { GraphEndpoint, PortDataType, PortValue } from "nonoha-client-js"
 import { useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import {
+  FastTimeSeriesFeed,
   FastTimeSeriesPlotData,
   FastTimeSeriesGraphHandle,
   NumericArray,
@@ -95,11 +96,16 @@ const GraphWrapper = memo(
     // Reusable buffer for seriesList to avoid frequent memory allocation
     const refSeriesList = useRef<NumericArray[]>([])
 
+    // React state only for resets (length, clear); the stream pushes
+    // `refLive` to the graph without a render.
     const [plotData, setPlotData] = useState<FastTimeSeriesPlotData>({
       x: Array.from({ length: xLength }, (_, i) => i),
       traces: refTraces.current,
       cursorPosition: 0,
     })
+    const refLive = useRef<FastTimeSeriesPlotData>(plotData)
+    if (refLive.current.x !== plotData.x) refLive.current = { ...plotData }
+    const refFeed = useRef<FastTimeSeriesFeed | null>(null)
 
     useEffect(() => {
       const xLength = refXLength.current
@@ -290,11 +296,10 @@ const GraphWrapper = memo(
         currentCursorPosition.current = nextCursorPosition
         reportError(undefined)
 
-        setPlotData(prev => ({
-          x: prev.x,
-          traces: traces,
-          cursorPosition: tailCursorPosition,
-        }))
+        const live = refLive.current
+        live.traces = traces
+        live.cursorPosition = tailCursorPosition
+        refFeed.current?.(live)
     })
 
     return (
@@ -305,6 +310,7 @@ const GraphWrapper = memo(
         plotData={plotData}
         yRange={yRange}
         viewportZoom={viewportZoom}
+        feed={refFeed}
       />
     )
   }
@@ -329,7 +335,7 @@ export type FastTimeSeriesGraphNode = Node<{
 export const FastTimeSeriesGraphNode = memo(
   (props: NodeProps<FastTimeSeriesGraphNode>) => {
     const { setNodes } = useReactFlow()
-    const { zoom: viewportZoom } = useViewport()
+    const viewportZoom = useZoom()
     const [{ colors }] = useThemeStore()
 
     const graphRef = useRef<FastTimeSeriesGraphHandle>(null)

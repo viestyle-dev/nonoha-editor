@@ -19,6 +19,8 @@ import {
 import { enqueueSnackbar } from "notistack"
 import { SnackbarActionPromptReload } from "@/src/components/snackbar-actions"
 import { mergeEngineEdges } from "@/src/lib/graph/edge-merge"
+import { waypointNode } from "@/src/nodes/editor-nodes/waypoint-node"
+import type { DrawAs } from "@/src/lib/graph/edge-drawing"
 
 export type ProgressCallback = (
   current: number,
@@ -91,6 +93,8 @@ export const buildGraph = async (
         label?: string
         // Engine node: output previewed inside the node
         preview?: string | null
+        // Outputs drawn against the rule (edge-drawing.ts): output name ("" for a graph port) -> drawing
+        drawAs?: Record<string, DrawAs>
       }
     } = await (
       await fetch(
@@ -157,6 +161,7 @@ export const buildGraph = async (
               nodeData: nodeData,
               graphEndpoint: graphEndpoint,
               preview: settings?.preview ?? undefined,
+              drawAs: settings?.drawAs ?? undefined,
             },
             position: { x: settings?.x ?? 240, y: settings?.y ?? 100 },
             type: getEngineNodeUIType(nodeData.type),
@@ -182,7 +187,7 @@ export const buildGraph = async (
       const settings = nodesSettings?.[`$input:${input.name}`]
       return {
         id: `$input:${input.name}`,
-        data: { label: input.name, port: input, graphEditDisabled },
+        data: { label: input.name, port: input, graphEditDisabled, drawAs: settings?.drawAs ?? undefined },
         position: { x: settings?.x ?? 100, y: settings?.y ?? 100 },
         type: "BasicPortNode",
         dragHandle: ".drag-handle",
@@ -206,7 +211,7 @@ export const buildGraph = async (
       const settings = nodesSettings?.[`$output:${output.name}`]
       return {
         id: `$output:${output.name}`,
-        data: { label: output.name, port: output, graphEditDisabled },
+        data: { label: output.name, port: output, graphEditDisabled, drawAs: settings?.drawAs ?? undefined },
         position: { x: settings?.x ?? 500, y: settings?.y ?? 100 },
         type: "BasicPortNode",
         dragHandle: ".drag-handle",
@@ -231,6 +236,7 @@ export const buildGraph = async (
             label: settings.label ?? nodeName,
             graphEndpoint: graphEndpoint,
             editorModelUpdater,
+            drawAs: settings.drawAs ?? undefined,
           },
           position: { x: settings.x ?? 100, y: settings.y ?? 100 },
           style: hasSize
@@ -251,14 +257,7 @@ export const buildGraph = async (
       .filter(key => key.startsWith("$wp:"))
       .map(wpId => {
         const settings = nodesSettings?.[wpId]
-        return {
-          id: wpId,
-          type: "WaypointNode",
-          position: { x: settings?.x ?? 0, y: settings?.y ?? 0 },
-          parentId: "$graph",
-          data: {},
-          zIndex: 2000,
-        } as Node
+        return waypointNode(wpId, { x: settings?.x ?? 0, y: settings?.y ?? 0 }) as Node
       })
 
     const edges = await fetchGraphEdges(engineGatewayUrl, graphName)

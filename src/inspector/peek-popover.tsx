@@ -18,7 +18,8 @@ import { alternativeKinds, type ValueKind } from "./interpret"
 
 import { useThemeStore } from "@/src/stores/theme-store"
 import type { ColorOrder } from "@/src/lib/image-frame"
-import { useInspector, usePortActivity } from "@/src/inspector/inspector-store"
+import { isFlowing, useInspector, usePortActivity } from "@/src/inspector/inspector-store"
+import { formatHz } from "@/src/inspector/value-renderers"
 import { DetectedValue, describeShape, InspectedValueView } from "@/src/inspector/inspected-value-view"
 
 const KIND_LABELS: Record<ValueKind, string> = {
@@ -112,7 +113,7 @@ export function PeekPopover({
             </Typography>
             <Typography variant="caption" css={css({ color: colors.onSurfaceVariant })}>
               {describeShape(detected)}
-              {activity && activity.hz > 0 ? ` · ${activity.hz.toFixed(activity.hz < 10 ? 1 : 0)} Hz` : ""}
+              {isFlowing(activity) ? ` · ${formatHz(activity!.hz)} Hz` : ""}
               {activity ? ` · ${activity.count} dispatches` : ""}
             </Typography>
           </div>

@@ -34,10 +34,8 @@ import { NodePropertyInputField } from "@/src/components/node-property-input-fie
 import { fetchGraphEdges } from "@/src/stores/node-flow-store"
 import { mergeEngineEdges } from "@/src/lib/graph/edge-merge"
 import { EditableTypography } from "@/src/components/editable-typography"
-import {
-  getHctFromPortValueType,
-  useNodeFlowColorsStore,
-} from "@/src/stores/node-flow-colors-store"
+import { useNodeFlowColorsStore } from "@/src/stores/node-flow-colors-store"
+import { getHctFromPortValueType } from "@/src/lib/graph/port-colors"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { SnackbarActionClose } from "@/src/components/snackbar-actions"
 import { useNodeCatalog } from "@/src/stores/node-catalog-store"
@@ -65,12 +63,20 @@ export type BasicEngineNode = Node<{
     properties: {
       [key: string]: string | number | boolean
     }
-    property_groups?: { keys: string[]; dispatch_flags: boolean[] }[]
+    property_groups?: PropertyGroup[]
   }
   graphEndpoint: GraphEndpoint
   /** Output shown inside the node (settings.json nodes.<name>.preview). */
   preview?: string
 }>
+
+interface PropertyGroup {
+  keys: string[]
+  dispatch_flags: boolean[]
+}
+
+/** A node without groups: one array, so what depends on the groups is not made again on every render. */
+const NO_GROUPS: PropertyGroup[] = []
 
 /**
  * A single property row that can detect its own connection state via useHandleConnections.
@@ -448,9 +454,9 @@ export const BasicEngineNode = memo((props: NodeProps<BasicEngineNode>) => {
   }, [props.data.nodeData.inputs])
 
   // Build group lookup: property name → group object
-  const propertyGroups = props.data.nodeData.property_groups ?? []
+  const propertyGroups = props.data.nodeData.property_groups ?? NO_GROUPS
   const groupLookup = useMemo(() => {
-    const lookup: Record<string, { keys: string[]; dispatch_flags: boolean[] }> = {}
+    const lookup: Record<string, PropertyGroup> = {}
     for (const group of propertyGroups) {
       for (const key of group.keys) {
         lookup[key] = group
@@ -492,7 +498,7 @@ export const BasicEngineNode = memo((props: NodeProps<BasicEngineNode>) => {
     }
   }, [groupSelection, propertyGroups, graphEndpoint, props.id, setNodes])
 
-  const handleUngroup = useCallback(async (groupToRemove: { keys: string[]; dispatch_flags: boolean[] }) => {
+  const handleUngroup = useCallback(async (groupToRemove: PropertyGroup) => {
     const newGroups = propertyGroups.filter(g => g.keys.join(",") !== groupToRemove.keys.join(","))
     const graphName = graphEndpoint.graphName
     await fetch(

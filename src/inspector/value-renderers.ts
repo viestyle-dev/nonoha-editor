@@ -317,3 +317,8 @@ export function formatNumber(v: number): string {
   if (Number.isInteger(v)) return String(v)
   return v.toFixed(a >= 100 ? 1 : a >= 1 ? 3 : 4)
 }
+
+/** A port's rate: "2.0", "15". */
+export function formatHz(hz: number): string {
+  return hz >= 10 ? hz.toFixed(0) : hz.toFixed(1)
+}

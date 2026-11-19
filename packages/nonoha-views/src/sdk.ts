@@ -102,7 +102,11 @@ export interface ValuesInfo {
 export interface ViewContext {
   /** Values for one input, batch first. Valid during the callback: the host may reuse the arrays (and `info`), so copy what you keep. */
   onValues(input: string, callback: (values: PortValue[], info: ValuesInfo) => void): () => void
-  /** Run `draw` once on the next animation frame (calls within a frame coalesce). */
+  /**
+   * Run `draw` once on the next animation frame (calls within a frame
+   * coalesce). While the view is off screen the draw waits and runs on the
+   * first frame it shows again; values keep arriving meanwhile.
+   */
   requestFrame(draw: () => void): void
   /** Current settings, resolved against the specs (see ViewSettingSpec). */
   readonly settings: Readonly<Record<string, unknown>>

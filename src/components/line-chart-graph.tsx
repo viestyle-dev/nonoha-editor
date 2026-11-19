@@ -155,7 +155,7 @@ export default function LineChartGraph(props: LineChartGraphProps) {
       buildTraces(plotDataRef.current, themeRef.current),
       refLayout.current
     )
-  })
+  }, refPlot)
 
   useEffect(() => {
     painter.schedule()

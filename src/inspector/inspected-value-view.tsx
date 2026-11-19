@@ -134,7 +134,7 @@ export const InspectedValueView = memo(function InspectedValueView({
         drawSeries(ctx, width, height, array, shape[0], shape.length > 1 ? shape[1] : 1, themeRef.current)
         break
     }
-  })
+  }, canvasRef)
 
   useEffect(() => {
     if (!inspector || paused || !connected) return
