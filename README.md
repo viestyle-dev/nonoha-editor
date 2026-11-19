@@ -1,6 +1,29 @@
 # nonoha-editor
 
-Web-based visual editor for building and monitoring nonoha-engine graphs.
+Web-based visual editor for building and monitoring nonoha-engine graphs. Place nodes, connect their ports, set their properties, and watch the data flowing through the graph in live views. It connects to a running [nonoha-engine](https://github.com/viestyle-dev/nonoha-engine), which runs the graph and can serve the editor at `/editor`.
+
+![A graph in nonoha-editor: nodes and their connections above, live views of the data below](https://hub.nonoha.dev/screens/editor-motion.webp)
+
+## The nonoha ecosystem
+
+nonoha is node-based programming redesigned for the era of developing together with AI: a Python framework for real-time signal processing and applications. AI agents write a graph as code, people edit the same graph as a diagram, and an engine with no GUI runs it.
+
+<a href="https://hub.nonoha.dev/ecosystem/">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://hub.nonoha.dev/screens/ecosystem-dark.webp">
+    <img src="https://hub.nonoha.dev/screens/ecosystem-light.webp" width="100%" alt="The nonoha codebases in five layers, each depending on the ones below it. Tools and UIs: nonoha Hub, its CLI, nonoha-editor, custom web UIs, and your own apps. Clients: nonoha-client-js. Runtimes: nonoha-engine, and nonoha-embedded inside apps. Nodes: sci-nodes and plugins. Core: nonoha-core, on NumPy.">
+  </picture>
+</a>
+
+| Layer | Codebases |
+| --- | --- |
+| Tools and UIs | [nonoha Hub and its CLI](https://hub.nonoha.dev/), **nonoha-editor** (this repository), your own web UI or app |
+| Clients | [nonoha-client-js](https://github.com/viestyle-dev/nonoha-client-js) |
+| Runtimes | [nonoha-engine](https://github.com/viestyle-dev/nonoha-engine) (standalone), [nonoha-embedded](https://github.com/viestyle-dev/nonoha-embedded) (inside an app) |
+| Nodes | [sci-nodes](https://github.com/viestyle-dev/sci-nodes), [plugins](https://hub.nonoha.dev/plugins/) |
+| Core | [nonoha-core](https://github.com/viestyle-dev/nonoha-core) |
+
+The [nonoha website](https://hub.nonoha.dev/) has the [documentation](https://hub.nonoha.dev/docs/) and [workspaces](https://hub.nonoha.dev/workspaces/) to start from.
 
 ## Features
 
@@ -13,7 +36,7 @@ Web-based visual editor for building and monitoring nonoha-engine graphs.
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 18.17+
 - A running [nonoha-engine](https://github.com/viestyle-dev/nonoha-engine) backend
 
 ## Getting Started
@@ -41,6 +64,16 @@ uv run main.py --vnf flows/default.vnf
 
 See the [nonoha-engine README](https://github.com/viestyle-dev/nonoha-engine)
 for engine setup.
+
+## Building for the engine
+
+The engine serves the editor under `/editor`, so build it with that base path:
+
+```bash
+NEXT_PUBLIC_BASE_PATH=/editor npm run build   # PowerShell: $env:NEXT_PUBLIC_BASE_PATH="/editor"; npm run build
+```
+
+Then start the engine with `--editor-html <this repository>/out`, or copy `out/` to the engine's `editor_html/`.
 
 ## Project Structure
 
