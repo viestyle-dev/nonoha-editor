@@ -29,12 +29,37 @@ import { PluginViewNode } from "@/src/nodes/editor-nodes/plugin-view-node"
 import { GraphNode } from "@/src/nodes/graph-node"
 import BasicNodeEdge from "@/src/components/basic-node-edge"
 import type { Node } from "@xyflow/react"
+import { memo, type ComponentType } from "react"
+
+/**
+ * React Flow passes a node component its absolute position, so a dragged node
+ * would re-render on every drag update; React Flow moves the node's wrapper
+ * itself and no node component reads the position.
+ */
+function samePropsBesidesPosition(a: object, b: object): boolean {
+  const before = a as Record<string, unknown>
+  const after = b as Record<string, unknown>
+  for (const key in after) {
+    if (key === "positionAbsoluteX" || key === "positionAbsoluteY") continue
+    if (before[key] !== after[key]) return false
+  }
+  for (const key in before) if (!(key in after)) return false
+  return true
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- each node component has its own props
+function placedByReactFlow<T extends Record<string, ComponentType<any>>>(components: T): T {
+  const placed: Record<string, unknown> = {}
+  for (const name in components) placed[name] = memo(components[name], samePropsBesidesPosition)
+  return placed as T
+}
 
 /**
  * React Flow node type registry.
- * Maps node type names to their React components.
+ * Maps node type names to their React components (re-rendered on any prop
+ * change but the position: samePropsBesidesPosition).
  */
-export const NODE_TYPES = {
+export const NODE_TYPES = placedByReactFlow({
   BasicEngineNode,
   BasicPortNode,
   LineChartGraphNode,
@@ -62,7 +87,7 @@ export const NODE_TYPES = {
   ValuesLogDisplayNode,
   WaypointNode,
   PluginViewNode,
-} as const
+})
 
 /**
  * React Flow edge type registry.

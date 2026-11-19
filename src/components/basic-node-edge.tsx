@@ -9,7 +9,6 @@ import {
   useStore,
   useStoreApi,
   Node,
-  EdgeLabelRenderer,
 } from "@xyflow/react"
 import { MouseEvent, useCallback, useMemo } from "react"
 import { getEditorEdgeId } from "../api/editor-model-updater"
@@ -31,7 +30,7 @@ import {
 } from "../lib/graph/edge-path"
 import { edgeWeight } from "../lib/graph/edge-weight"
 import { edgeDrawings, type DrawAs } from "../lib/graph/edge-drawing"
-import { drawAsOf, useEdgeDrawing, useOutputMarks } from "../hooks/use-edge-drawing"
+import { drawAsOf, EdgeLabelPortal, useEdgeDrawing, useOutputMarks } from "../hooks/use-edge-drawing"
 import {
   sourceActivityRef,
   useInspector,
@@ -360,7 +359,7 @@ export default function BasicNodeEdge({
         onDoubleClick={handleEdgeDoubleClick}
       />
       {!drawnAsLine && (
-        <EdgeLabelRenderer>
+        <EdgeLabelPortal>
           {/* The source's name at the target's input, with a stub of the line */}
           <div
             className="nodrag nopan"
@@ -399,7 +398,7 @@ export default function BasicNodeEdge({
             </Tooltip>
             <span style={{ width: 6, height: 2, background: colorsAlong?.[1] ?? colors.outline }} />
           </div>
-        </EdgeLabelRenderer>
+        </EdgeLabelPortal>
       )}
       {outputMarks && <OutputMarks
         marks={outputMarks}
@@ -409,7 +408,7 @@ export default function BasicNodeEdge({
         onClick={event => selectSource(event, false)}
       />}
       {problem && drawnAsLine && !props.selected && (
-        <EdgeLabelRenderer>
+        <EdgeLabelPortal>
           <div
             className="nodrag nopan"
             style={{
@@ -427,10 +426,10 @@ export default function BasicNodeEdge({
               />
             </Tooltip>
           </div>
-        </EdgeLabelRenderer>
+        </EdgeLabelPortal>
       )}
       {props.selected && (
-        <EdgeLabelRenderer>
+        <EdgeLabelPortal>
           <div
             className="nodrag nopan"
             style={{
@@ -475,7 +474,7 @@ export default function BasicNodeEdge({
               </IconButton>
             </Paper>
           </div>
-        </EdgeLabelRenderer>
+        </EdgeLabelPortal>
       )}
     </>
   )
@@ -513,7 +512,7 @@ function OutputMarks({
     fontVariantNumeric: "tabular-nums",
   } as const
   return (
-    <EdgeLabelRenderer>
+    <EdgeLabelPortal>
       <div
         className="nodrag nopan"
         onClick={onClick}
@@ -541,7 +540,7 @@ function OutputMarks({
           </Tooltip>
         )}
       </div>
-    </EdgeLabelRenderer>
+    </EdgeLabelPortal>
   )
 }
 

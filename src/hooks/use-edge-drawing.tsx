@@ -1,5 +1,8 @@
-import { useCallback, useSyncExternalStore } from "react"
-import { ReactFlowState, useStoreApi } from "@xyflow/react"
+"use client"
+
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react"
+import { createPortal } from "react-dom"
+import { ReactFlowState, useStore, useStoreApi } from "@xyflow/react"
 import {
   edgeDrawings,
   outputKey,
@@ -9,13 +12,17 @@ import {
 } from "@/src/lib/graph/edge-drawing"
 
 /**
- * The graph's edge drawings (see edge-drawing.ts), shared by every edge and
- * waypoint. React Flow's store changes on every pan frame and calls every
+ * The graph's edge drawings (see edge-drawing.ts), one store per graph
+ * (EdgeDrawingsProvider) shared by every edge and waypoint. React Flow's
+ * store changes on every pan frame and drag update, and calls every
  * subscriber's selector then; the drawings change only with the edges or the
- * nodes (a node carries its outputs' `drawAs`). So one subscription per graph
- * recomputes them when those change and tells the edges and waypoints only
- * when the result differs: panning runs one reference comparison, not a
- * selector per edge.
+ * nodes (a node carries its outputs' `drawAs`). So the one store recomputes
+ * them when those arrays change and tells the edges and waypoints only when
+ * the result differs.
+ *
+ * The provider also finds React Flow's edge label layer once, for
+ * EdgeLabelPortal: React Flow's EdgeLabelRenderer looks it up with a
+ * querySelector on every store change, once per label.
  */
 
 interface Drawings extends EdgeDrawings {
@@ -61,12 +68,17 @@ class DrawingsStore {
   private nodes: unknown
   private readonly listeners = new Set<() => void>()
 
-  constructor(flow: FlowStore) {
+  constructor(private readonly flow: FlowStore) {
     const state = flow.getState()
     this.edges = state.edges
     this.nodes = state.nodes
     ;[this.drawings, this.signature] = compute(state)
-    flow.subscribe(next => this.update(next))
+  }
+
+  /** Follow React Flow's store until the returned function is called. */
+  connect(): () => void {
+    this.update(this.flow.getState())
+    return this.flow.subscribe(state => this.update(state))
   }
 
   private update(state: ReactFlowState): void {
@@ -86,17 +98,44 @@ class DrawingsStore {
   }
 }
 
-const stores = new WeakMap<FlowStore, DrawingsStore>()
+interface EdgeDrawingsContextValue {
+  store: DrawingsStore
+  /** React Flow's edge label layer, once it is mounted. */
+  labels: HTMLElement | null
+}
 
-function useDrawingsStore(): DrawingsStore {
+const EdgeDrawingsContext = createContext<EdgeDrawingsContextValue | null>(null)
+
+const domNodeSelector = (s: ReactFlowState) => s.domNode
+
+/** One drawings store and the edge label layer for the graph; wraps <ReactFlow> inside its ReactFlowProvider. */
+export function EdgeDrawingsProvider({ children }: { children: ReactNode }) {
   const flow = useStoreApi()
-  let store = stores.get(flow)
-  if (!store) stores.set(flow, (store = new DrawingsStore(flow)))
-  return store
+  const [store] = useState(() => new DrawingsStore(flow))
+  useEffect(() => store.connect(), [store])
+  const domNode = useStore(domNodeSelector)
+  const labels = useMemo(
+    () => domNode?.querySelector<HTMLElement>(".react-flow__edgelabel-renderer") ?? null,
+    [domNode],
+  )
+  const value = useMemo(() => ({ store, labels }), [store, labels])
+  return <EdgeDrawingsContext.Provider value={value}>{children}</EdgeDrawingsContext.Provider>
+}
+
+function useEdgeDrawingsContext(): EdgeDrawingsContextValue {
+  const value = useContext(EdgeDrawingsContext)
+  if (!value) throw new Error("EdgeDrawingsProvider is missing around <ReactFlow>")
+  return value
+}
+
+/** Renders `children` in React Flow's edge label layer (as EdgeLabelRenderer, without its per-label lookup). */
+export function EdgeLabelPortal({ children }: { children: ReactNode }) {
+  const { labels } = useEdgeDrawingsContext()
+  return labels ? createPortal(children, labels) : null
 }
 
 export function useEdgeDrawing(edgeId: string): EdgeDrawing {
-  const store = useDrawingsStore()
+  const { store } = useEdgeDrawingsContext()
   const snapshot = useCallback(() => store.drawings.of.get(edgeId) ?? "line", [store, edgeId])
   return useSyncExternalStore(store.subscribe, snapshot, snapshot)
 }
@@ -106,7 +145,7 @@ export function useEdgeDrawing(edgeId: string): EdgeDrawing {
  * or "" when another edge of the same output draws them (one set per output).
  */
 export function useOutputMarks(edgeId: string, source: string, sourceHandle: string | null | undefined): string {
-  const store = useDrawingsStore()
+  const { store } = useEdgeDrawingsContext()
   const snapshot = useCallback(() => {
     const marks = store.drawings.outputs.get(outputKey(source, sourceHandle))
     return marks && marks.markEdge === edgeId ? `${marks.references}|${marks.displays}` : ""
@@ -116,7 +155,7 @@ export function useOutputMarks(edgeId: string, source: string, sourceHandle: str
 
 /** "<edges>|<lines>" through a waypoint. */
 export function useWaypointUse(waypointId: string): string {
-  const store = useDrawingsStore()
+  const { store } = useEdgeDrawingsContext()
   const snapshot = useCallback(() => store.drawings.waypoints.get(waypointId) ?? "0|0", [store, waypointId])
   return useSyncExternalStore(store.subscribe, snapshot, snapshot)
 }

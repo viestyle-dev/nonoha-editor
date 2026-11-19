@@ -100,6 +100,7 @@ import { EDGE_Z_INDEX } from "@/src/api/graph-api"
 import { EdgeConnectionLine } from "@/src/components/basic-node-edge"
 import { BreathPauser } from "@/src/components/breath"
 import { EdgeFocus } from "@/src/components/edge-focus"
+import { EdgeDrawingsProvider } from "@/src/hooks/use-edge-drawing"
 import {
   parseEdgeEndpoint,
   WAYPOINT_MERGE_RADIUS,
@@ -217,6 +218,21 @@ function InspectorBridge({
   return null
 }
 
+const NO_NODES: Node[] = []
+
+/** The port names of `prefix` ("$input:" or "$output:") nodes, joined with newlines. */
+function portNamesKey(nodes: Node[], prefix: string): string {
+  let key = ""
+  for (const node of nodes) {
+    if (node.id.startsWith(prefix)) key += `${node.id.slice(prefix.length)}\n`
+  }
+  return key
+}
+
+function splitPortNames(key: string): string[] {
+  return key ? key.slice(0, -1).split("\n") : []
+}
+
 export default function Page() {
   return (
     <GraphSessionStoreProvider>
@@ -286,27 +302,22 @@ function PageInner() {
   const edgeDropMenuStateRef = useRef(edgeDropMenuState)
   edgeDropMenuStateRef.current = edgeDropMenuState
 
-  const existingInputPortNames = useMemo(
-    () =>
-      nodes
-        .filter(n => n.id.startsWith("$input:"))
-        .map(n => n.id.slice("$input:".length)),
-    [nodes],
-  )
-  const existingOutputPortNames = useMemo(
-    () =>
-      nodes
-        .filter(n => n.id.startsWith("$output:"))
-        .map(n => n.id.slice("$output:".length)),
-    [nodes],
-  )
+  // The graph's port names, as new arrays only when the names change (not
+  // on every node move: the dialogs that take them would re-render)
+  const inputPortNamesKey = useMemo(() => portNamesKey(nodes, "$input:"), [nodes])
+  const outputPortNamesKey = useMemo(() => portNamesKey(nodes, "$output:"), [nodes])
+  const existingInputPortNames = useMemo(() => splitPortNames(inputPortNamesKey), [inputPortNamesKey])
+  const existingOutputPortNames = useMemo(() => splitPortNames(outputPortNamesKey), [outputPortNamesKey])
 
+  // Reads the nodes when a waypoint is dropped (not from render): the change
+  // handler stays the same function through a drag, and React Flow's store is
+  // not updated again with a new onNodesChange on every drag update.
   const handleWaypointMerge = useCallback(
     (draggedWpId: string, draggedPos: { x: number; y: number }) => {
       // Find nearby waypoint to merge with
       let nearestId: string | null = null
       let nearestDist = Infinity
-      for (const node of nodes) {
+      for (const node of reactFlowInstanceRef.current?.getNodes() ?? []) {
         if (!node.id.startsWith("$wp:") || node.id === draggedWpId) continue
         const dx = node.position.x - draggedPos.x
         const dy = node.position.y - draggedPos.y
@@ -383,7 +394,7 @@ function PageInner() {
         }
       }
     },
-    [nodes, setEdges, setNodes],
+    [setEdges, setNodes],
   )
 
   const onNodeChange = useCallback(
@@ -1011,9 +1022,15 @@ function PageInner() {
     useState<HTMLElement | null>(null)
 
   // Helper function to serialize selected nodes and edges
+  // Copy and delete read the graph when they run, not from render, so they
+  // (and the keyboard listener that calls them) are not recreated by every
+  // node move.
   const serializeSelection = useCallback((): ClipboardData | null => {
+    const instance = reactFlowInstanceRef.current
+    if (!instance) return null
+    const nodes = instance.getNodes()
     const selectedNodes = nodes.filter(node => node.selected)
-    const selectedEdges = edges.filter(edge => edge.selected)
+    const selectedEdges = instance.getEdges().filter(edge => edge.selected)
 
     if (selectedNodes.length === 0) {
       return null
@@ -1191,7 +1208,7 @@ function PageInner() {
       nodes: clipboardNodes,
       edges: clipboardEdges,
     }
-  }, [nodes, edges])
+  }, [])
 
   // Copy functionality
   const handleCopy = useCallback(async () => {
@@ -2054,14 +2071,15 @@ function PageInner() {
         {
           engineGatewayUrl,
           graphName,
-          edges,
+          // read now: the deleted edges are excluded by id either way
+          edges: reactFlowInstanceRef.current?.getEdges() ?? [],
           setNodes,
           editorModelUpdater,
         },
         enqueueSnackbar,
       )
     },
-    [edges, setNodes],
+    [setNodes],
   )
 
   const handleNodesDeleteCb = useCallback(
@@ -2093,18 +2111,22 @@ function PageInner() {
   // - only fires when target is canvas / node selection rect / document.body
   // - skipped while user has a text selection
   const handleDeleteSelected = useCallback(() => {
-    const selectedNodes = nodes
+    const instance = reactFlowInstanceRef.current
+    if (!instance) return
+    const selectedNodes = instance
+      .getNodes()
       .filter((n: Node) => n.selected)
       .map((n: Node) => ({ id: n.id }))
-    const selectedEdges = edges
+    const selectedEdges = instance
+      .getEdges()
       .filter((e: Edge) => e.selected)
       .map((e: Edge) => ({ id: e.id }))
     if (selectedNodes.length === 0 && selectedEdges.length === 0) return
-    reactFlowInstanceRef.current?.deleteElements({
+    instance.deleteElements({
       nodes: selectedNodes,
       edges: selectedEdges,
     })
-  }, [nodes, edges])
+  }, [])
 
   // Keyboard event handler
   const handleKeyDown = useCallback(
@@ -2181,6 +2203,319 @@ function PageInner() {
     }
   }, [])
 
+  // The page's controls, menus and dialogs: built again only when what they
+  // show changes, not on every node move (the page re-renders with the nodes
+  // it hands to <ReactFlow>, and these, mostly closed, would render with it).
+  const graphEndpoint = refGraphEndpoint.current
+  const nodeRegistry = nodeRegistryRef.current
+  // The search lists the nodes while open; closed, a node move does not reach it
+  const searchNodes = nodeSearchDialogOpen ? nodes : NO_NODES
+  const overlays = useMemo(
+    () => (
+      <>
+          <div
+            css={css({
+              position: "absolute",
+              right: 8,
+              top: 8,
+              display: "flex",
+              gap: 4,
+            })}
+          >
+            <EngineAboutControls
+              engineGatewayUrl={connectedEngineUrl}
+              open={aboutOpen}
+              onOpen={() => setAboutOpen(true)}
+              onClose={() => setAboutOpen(false)}
+            />
+            <EnvSettingsDialog
+              open={envSettingsOpen}
+              onClose={() => setEnvSettingsOpen(false)}
+              engineGatewayUrl={connectedEngineUrl}
+            />
+            <InspectorStatusButton />
+            <IconButton
+              title="Refresh graph"
+              onClick={() => {
+                if (progressState.isActive) return
+                const graphName = routerState.hash.slice(1)
+                const url = engineGatewayUrlRef.current
+                if (!graphName || !url) return
+                setProgressState({
+                  isActive: true,
+                  current: 0,
+                  total: 0,
+                  message: "Refreshing...",
+                  startTime: Date.now(),
+                })
+                refreshGraph(
+                  url,
+                  graphName,
+                  setNodes,
+                  setEdges,
+                  (current, total, message) => {
+                    setProgressState(prev => ({
+                      ...prev,
+                      current,
+                      total,
+                      message,
+                    }))
+                  },
+                )
+                  .catch(error =>
+                    enqueueSnackbar(`Refresh failed: ${error}`, {
+                      variant: "error",
+                    }),
+                  )
+                  .finally(() =>
+                    setProgressState(prev => ({ ...prev, isActive: false })),
+                  )
+              }}
+            >
+              <Refresh />
+            </IconButton>
+            <IconButton
+              onClick={() => {
+                setNodeSearchDialogOpen(true)
+              }}
+            >
+              <Search />
+            </IconButton>
+            <IconButton
+              title="Data browser"
+              onClick={() => setDataBrowserOpen(prev => !prev)}
+            >
+              <FolderOpen />
+            </IconButton>
+            <IconButton
+              onClick={event => {
+                setSettingsMenuAnchorEl(event.currentTarget)
+              }}
+            >
+              <MoreVert />
+            </IconButton>
+            <Menu
+              open={Boolean(settingsMenuAnchorEl)}
+              anchorEl={settingsMenuAnchorEl}
+              onClose={() => {
+                setSettingsMenuAnchorEl(null)
+              }}
+            >
+              <MenuItem
+                onClick={() => {
+                  setEngineGatewaySettingsDialogOpen(true)
+                  setSettingsMenuAnchorEl(null)
+                }}
+              >
+                Engine Gateway Settings
+              </MenuItem>
+              <EnvSettingsMenuItem
+                engineGatewayUrl={connectedEngineUrl}
+                onClick={() => {
+                  setEnvSettingsOpen(true)
+                  setSettingsMenuAnchorEl(null)
+                }}
+              />
+              <MenuItem
+                onClick={() => {
+                  setAboutOpen(true)
+                  setSettingsMenuAnchorEl(null)
+                }}
+              >
+                About nonoha Editor
+              </MenuItem>
+
+              <div
+                css={css({
+                  display: "flex",
+                  flexDirection: "column",
+                  marginTop: 16,
+                  paddingLeft: 16,
+                  paddingRight: 16,
+                })}
+              >
+                <Typography css={css({})}>Theme Mode</Typography>
+                <ToggleButtonGroup
+                  size="small"
+                  exclusive={true}
+                  value={themeState.scheme.isDark ? "dark" : "light"}
+                  onChange={(event, newValue) => {
+                    console.log(newValue)
+                    themeStoreActions.setMode(newValue)
+                  }}
+                >
+                  <ToggleButton
+                    value="light"
+                    css={css({
+                      flexGrow: 1,
+                    })}
+                  >
+                    <LightMode />
+                  </ToggleButton>
+                  <ToggleButton
+                    value="dark"
+                    css={css({
+                      flexGrow: 1,
+                    })}
+                  >
+                    <DarkMode />
+                  </ToggleButton>
+                </ToggleButtonGroup>
+              </div>
+            </Menu>
+          </div>
+          <Fab
+            css={css`
+              position: absolute;
+              bottom: 40px;
+              right: 40px;
+            `}
+            onClick={() => setNodeAddDialogOpen(true)}
+          >
+            <Add />
+          </Fab>
+          <NodeAddMenu
+            open={nodeAddDialogOpen}
+            graphEndpoint={graphEndpoint}
+            nodeRegistry={nodeRegistry}
+            onClose={() => {
+              setNodeAddDialogOpen(false)
+            }}
+            nodePrototypes={allNodePrototypes}
+            onNodeAdd={node => {
+              if (node.type == undefined) {
+                return
+              }
+              const updater = editorModelUpdaterRef.current
+              updater?.addEditorNode(node.id, node.type, node.position.x, node.position.y)
+              // Views (and other prototypes with initial data) persist it right away.
+              const initial = (node.data as { nodeData?: Record<string, unknown> }).nodeData
+              if (initial) updater?.patchNodeData(node.id, initial)
+              if (node.type === "PluginViewNode") updater?.setNodeLabel(node.id, String(node.data.label))
+              const style = node.style as { width?: number; height?: number } | undefined
+              if (style?.width && style?.height) updater?.updateNodeSize(node.id, style.width, style.height)
+              setNodes(nds => [...nds, node])
+            }}
+            graphEditDisabled={GRAPH_EDIT_DISABLED}
+            existingInputPortNames={existingInputPortNames}
+            existingOutputPortNames={existingOutputPortNames}
+          />
+          <EdgeDropContextMenu
+            state={edgeDropMenuState}
+            graphEndpoint={graphEndpoint}
+            onClose={() => setEdgeDropMenuState(null)}
+            onPortCreated={handleEdgeDropPortCreated}
+            onViewSelected={handleEdgeDropView}
+            existingPortNames={
+              edgeDropMenuState?.sourceHandleType === "target"
+                ? existingInputPortNames
+                : existingOutputPortNames
+            }
+          />
+          <PortAddDialog
+            open={promoteRequest !== null}
+            portType="output"
+            graphEndpoint={graphEndpoint}
+            onClose={() => setPromoteRequest(null)}
+            onPortAdd={portNode => {
+              const request = promoteRequest
+              setPromoteRequest(null)
+              if (!request) return
+              handleEdgeDropPortCreated(portNode, {
+                sourceNodeId: request.source,
+                sourceHandleId: request.sourceHandle,
+                portNodeId: portNode.id,
+                portType: "output",
+              })
+              // Same display input, now fed by the port (replaces the dashed edge).
+              connectEditorInput(
+                { source: portNode.id, sourceHandle: null, target: request.target, targetHandle: request.targetHandle },
+                "output",
+              )
+            }}
+            initialValueTypeList={promoteRequest?.valueTypes}
+            initialPosition={promoteRequest?.position}
+            initialPortName={promoteRequest?.sourceHandle ?? undefined}
+            existingPortNames={existingOutputPortNames}
+          />
+          <EngineGatewaySettingsDialog
+            open={engineGatewaySettingsDialogOpen}
+            onClose={() => {
+              setEngineGatewaySettingsDialogOpen(false)
+            }}
+          />
+          <NodeSearchDialog
+            open={nodeSearchDialogOpen}
+            onClose={() => {
+              setNodeSearchDialogOpen(false)
+            }}
+            nodes={searchNodes}
+            onNodeSelect={nodeId => {
+              const instance = reactFlowInstanceRef.current
+              if (!instance) return
+
+              const node = instance.getNode(nodeId)
+              if (!node) return
+
+              // Get node center position
+              const nodeWidth = node.measured?.width ?? node.width ?? 200
+              const nodeHeight = node.measured?.height ?? node.height ?? 100
+              const nodeCenterX = node.position.x + nodeWidth / 2
+              const nodeCenterY = node.position.y + nodeHeight / 2
+
+              // Get current zoom level
+              const { zoom } = instance.getViewport()
+
+              // Offset Y to position node in lower half (accounting for dialog at top)
+              // Positive offset moves viewport up, showing node lower on screen
+              const viewportHeight = window.innerHeight
+              const yOffset = (viewportHeight * 0.2) / zoom
+
+              instance.setCenter(nodeCenterX, nodeCenterY - yOffset, {
+                duration: 300,
+                zoom,
+              })
+            }}
+          />
+
+          <DataBrowserDrawer
+            open={dataBrowserOpen}
+            onClose={() => setDataBrowserOpen(false)}
+            engineGatewayUrl={engineGatewayState.engineGatewayUrl}
+            graphName={routerState.hash.slice(1)}
+          />
+      </>
+    ),
+    [
+      aboutOpen,
+      allNodePrototypes,
+      connectEditorInput,
+      connectedEngineUrl,
+      dataBrowserOpen,
+      edgeDropMenuState,
+      engineGatewaySettingsDialogOpen,
+      engineGatewayState.engineGatewayUrl,
+      envSettingsOpen,
+      existingInputPortNames,
+      existingOutputPortNames,
+      graphEndpoint,
+      handleEdgeDropPortCreated,
+      handleEdgeDropView,
+      nodeAddDialogOpen,
+      nodeRegistry,
+      nodeSearchDialogOpen,
+      progressState.isActive,
+      promoteRequest,
+      routerState.hash,
+      searchNodes,
+      setEdges,
+      setNodes,
+      settingsMenuAnchorEl,
+      themeState.scheme.isDark,
+      themeStoreActions,
+    ],
+  )
+
   return (
     <NodeCatalogProvider engineGatewayUrl={connectedEngineUrl}>
       <InspectorProvider
@@ -2220,318 +2555,49 @@ function PageInner() {
             // "--xy-background-color-default": surfaceColor,
           })}
         >
-          <ReactFlow
-            css={css({
-              // "--xy-background-color-default": `${surfaceColor} !important`,
-            })}
-            elevateEdgesOnSelect
-            minZoom={0.25}
-            colorMode={themeState.scheme.isDark ? "dark" : "light"}
-            nodes={nodes}
-            nodeTypes={NODE_TYPES}
-            edgeTypes={EDGE_TYPES}
-            onNodesChange={onNodeChange}
-            onNodesDelete={handleNodesDeleteCb}
-            edges={edges}
-            onEdgesChange={onEdgeChangeFixed}
-            onEdgesDelete={handleEdgesDeleteCb}
-            onConnect={onConnectNode}
-            onConnectStart={onConnectStart}
-            onConnectEnd={onConnectEnd}
-            snapToGrid={true}
-            snapGrid={[20, 20]}
-            panOnScroll
-            selectionOnDrag
-            panOnDrag={[1, 2]}
-            selectionMode={SelectionMode.Full}
-            deleteKeyCode={null}
-            onInit={(instance: ReactFlowInstance) => {
-              reactFlowInstanceRef.current = instance
-            }}
-            connectionLineComponent={EdgeConnectionLine}
-          >
-            <Background gap={20} variant={BackgroundVariant.Dots} />
-            <Controls />
-            <BreathPauser />
-            <EdgeFocus />
-            <ViewportPortal>
-              <OriginMarker />
-            </ViewportPortal>
-            {/* <MiniMap nodeStrokeWidth={3} /> */}
-          </ReactFlow>
-        </div>
-        <div
-          css={css({
-            position: "absolute",
-            right: 8,
-            top: 8,
-            display: "flex",
-            gap: 4,
-          })}
-        >
-          <EngineAboutControls
-            engineGatewayUrl={connectedEngineUrl}
-            open={aboutOpen}
-            onOpen={() => setAboutOpen(true)}
-            onClose={() => setAboutOpen(false)}
-          />
-          <EnvSettingsDialog
-            open={envSettingsOpen}
-            onClose={() => setEnvSettingsOpen(false)}
-            engineGatewayUrl={connectedEngineUrl}
-          />
-          <InspectorStatusButton />
-          <IconButton
-            title="Refresh graph"
-            onClick={() => {
-              if (progressState.isActive) return
-              const graphName = routerState.hash.slice(1)
-              const url = engineGatewayUrlRef.current
-              if (!graphName || !url) return
-              setProgressState({
-                isActive: true,
-                current: 0,
-                total: 0,
-                message: "Refreshing...",
-                startTime: Date.now(),
-              })
-              refreshGraph(
-                url,
-                graphName,
-                setNodes,
-                setEdges,
-                (current, total, message) => {
-                  setProgressState(prev => ({
-                    ...prev,
-                    current,
-                    total,
-                    message,
-                  }))
-                },
-              )
-                .catch(error =>
-                  enqueueSnackbar(`Refresh failed: ${error}`, {
-                    variant: "error",
-                  }),
-                )
-                .finally(() =>
-                  setProgressState(prev => ({ ...prev, isActive: false })),
-                )
-            }}
-          >
-            <Refresh />
-          </IconButton>
-          <IconButton
-            onClick={() => {
-              setNodeSearchDialogOpen(true)
-            }}
-          >
-            <Search />
-          </IconButton>
-          <IconButton
-            title="Data browser"
-            onClick={() => setDataBrowserOpen(prev => !prev)}
-          >
-            <FolderOpen />
-          </IconButton>
-          <IconButton
-            onClick={event => {
-              setSettingsMenuAnchorEl(event.currentTarget)
-            }}
-          >
-            <MoreVert />
-          </IconButton>
-          <Menu
-            open={Boolean(settingsMenuAnchorEl)}
-            anchorEl={settingsMenuAnchorEl}
-            onClose={() => {
-              setSettingsMenuAnchorEl(null)
-            }}
-          >
-            <MenuItem
-              onClick={() => {
-                setEngineGatewaySettingsDialogOpen(true)
-                setSettingsMenuAnchorEl(null)
-              }}
-            >
-              Engine Gateway Settings
-            </MenuItem>
-            <EnvSettingsMenuItem
-              engineGatewayUrl={connectedEngineUrl}
-              onClick={() => {
-                setEnvSettingsOpen(true)
-                setSettingsMenuAnchorEl(null)
-              }}
-            />
-            <MenuItem
-              onClick={() => {
-                setAboutOpen(true)
-                setSettingsMenuAnchorEl(null)
-              }}
-            >
-              About nonoha Editor
-            </MenuItem>
-
-            <div
+          <EdgeDrawingsProvider>
+            <ReactFlow
               css={css({
-                display: "flex",
-                flexDirection: "column",
-                marginTop: 16,
-                paddingLeft: 16,
-                paddingRight: 16,
+                // "--xy-background-color-default": `${surfaceColor} !important`,
               })}
+              elevateEdgesOnSelect
+              minZoom={0.25}
+              colorMode={themeState.scheme.isDark ? "dark" : "light"}
+              nodes={nodes}
+              nodeTypes={NODE_TYPES}
+              edgeTypes={EDGE_TYPES}
+              onNodesChange={onNodeChange}
+              onNodesDelete={handleNodesDeleteCb}
+              edges={edges}
+              onEdgesChange={onEdgeChangeFixed}
+              onEdgesDelete={handleEdgesDeleteCb}
+              onConnect={onConnectNode}
+              onConnectStart={onConnectStart}
+              onConnectEnd={onConnectEnd}
+              snapToGrid={true}
+              snapGrid={[20, 20]}
+              panOnScroll
+              selectionOnDrag
+              panOnDrag={[1, 2]}
+              selectionMode={SelectionMode.Full}
+              deleteKeyCode={null}
+              onInit={(instance: ReactFlowInstance) => {
+                reactFlowInstanceRef.current = instance
+              }}
+              connectionLineComponent={EdgeConnectionLine}
             >
-              <Typography css={css({})}>Theme Mode</Typography>
-              <ToggleButtonGroup
-                size="small"
-                exclusive={true}
-                value={themeState.scheme.isDark ? "dark" : "light"}
-                onChange={(event, newValue) => {
-                  console.log(newValue)
-                  themeStoreActions.setMode(newValue)
-                }}
-              >
-                <ToggleButton
-                  value="light"
-                  css={css({
-                    flexGrow: 1,
-                  })}
-                >
-                  <LightMode />
-                </ToggleButton>
-                <ToggleButton
-                  value="dark"
-                  css={css({
-                    flexGrow: 1,
-                  })}
-                >
-                  <DarkMode />
-                </ToggleButton>
-              </ToggleButtonGroup>
-            </div>
-          </Menu>
+              <Background gap={20} variant={BackgroundVariant.Dots} />
+              <Controls />
+              <BreathPauser />
+              <EdgeFocus />
+              <ViewportPortal>
+                <OriginMarker />
+              </ViewportPortal>
+              {/* <MiniMap nodeStrokeWidth={3} /> */}
+            </ReactFlow>
+          </EdgeDrawingsProvider>
         </div>
-        <Fab
-          css={css`
-            position: absolute;
-            bottom: 40px;
-            right: 40px;
-          `}
-          onClick={() => setNodeAddDialogOpen(true)}
-        >
-          <Add />
-        </Fab>
-        <NodeAddMenu
-          open={nodeAddDialogOpen}
-          graphEndpoint={refGraphEndpoint.current}
-          nodeRegistry={nodeRegistryRef.current}
-          onClose={() => {
-            setNodeAddDialogOpen(false)
-          }}
-          nodePrototypes={allNodePrototypes}
-          onNodeAdd={node => {
-            if (node.type == undefined) {
-              return
-            }
-            const updater = editorModelUpdaterRef.current
-            updater?.addEditorNode(node.id, node.type, node.position.x, node.position.y)
-            // Views (and other prototypes with initial data) persist it right away.
-            const initial = (node.data as { nodeData?: Record<string, unknown> }).nodeData
-            if (initial) updater?.patchNodeData(node.id, initial)
-            if (node.type === "PluginViewNode") updater?.setNodeLabel(node.id, String(node.data.label))
-            const style = node.style as { width?: number; height?: number } | undefined
-            if (style?.width && style?.height) updater?.updateNodeSize(node.id, style.width, style.height)
-            setNodes(nds => [...nds, node])
-          }}
-          graphEditDisabled={GRAPH_EDIT_DISABLED}
-          existingInputPortNames={existingInputPortNames}
-          existingOutputPortNames={existingOutputPortNames}
-        />
-        <EdgeDropContextMenu
-          state={edgeDropMenuState}
-          graphEndpoint={refGraphEndpoint.current}
-          onClose={() => setEdgeDropMenuState(null)}
-          onPortCreated={handleEdgeDropPortCreated}
-          onViewSelected={handleEdgeDropView}
-          existingPortNames={
-            edgeDropMenuState?.sourceHandleType === "target"
-              ? existingInputPortNames
-              : existingOutputPortNames
-          }
-        />
-        <PortAddDialog
-          open={promoteRequest !== null}
-          portType="output"
-          graphEndpoint={refGraphEndpoint.current}
-          onClose={() => setPromoteRequest(null)}
-          onPortAdd={portNode => {
-            const request = promoteRequest
-            setPromoteRequest(null)
-            if (!request) return
-            handleEdgeDropPortCreated(portNode, {
-              sourceNodeId: request.source,
-              sourceHandleId: request.sourceHandle,
-              portNodeId: portNode.id,
-              portType: "output",
-            })
-            // Same display input, now fed by the port (replaces the dashed edge).
-            connectEditorInput(
-              { source: portNode.id, sourceHandle: null, target: request.target, targetHandle: request.targetHandle },
-              "output",
-            )
-          }}
-          initialValueTypeList={promoteRequest?.valueTypes}
-          initialPosition={promoteRequest?.position}
-          initialPortName={promoteRequest?.sourceHandle ?? undefined}
-          existingPortNames={existingOutputPortNames}
-        />
-        <EngineGatewaySettingsDialog
-          open={engineGatewaySettingsDialogOpen}
-          onClose={() => {
-            setEngineGatewaySettingsDialogOpen(false)
-          }}
-        />
-        <NodeSearchDialog
-          open={nodeSearchDialogOpen}
-          onClose={() => {
-            setNodeSearchDialogOpen(false)
-          }}
-          nodes={nodes}
-          onNodeSelect={nodeId => {
-            const instance = reactFlowInstanceRef.current
-            if (!instance) return
-
-            const node = instance.getNode(nodeId)
-            if (!node) return
-
-            // Get node center position
-            const nodeWidth = node.measured?.width ?? node.width ?? 200
-            const nodeHeight = node.measured?.height ?? node.height ?? 100
-            const nodeCenterX = node.position.x + nodeWidth / 2
-            const nodeCenterY = node.position.y + nodeHeight / 2
-
-            // Get current zoom level
-            const { zoom } = instance.getViewport()
-
-            // Offset Y to position node in lower half (accounting for dialog at top)
-            // Positive offset moves viewport up, showing node lower on screen
-            const viewportHeight = window.innerHeight
-            const yOffset = (viewportHeight * 0.2) / zoom
-
-            instance.setCenter(nodeCenterX, nodeCenterY - yOffset, {
-              duration: 300,
-              zoom,
-            })
-          }}
-        />
-
-        <DataBrowserDrawer
-          open={dataBrowserOpen}
-          onClose={() => setDataBrowserOpen(false)}
-          engineGatewayUrl={engineGatewayState.engineGatewayUrl}
-          graphName={routerState.hash.slice(1)}
-        />
-
+        {overlays}
         {/* Progress indicator for buildGraph and paste operations */}
         <ProgressIndicator {...progressState} delayMs={800} />
       </ReactFlowProvider>

@@ -20,6 +20,7 @@ import {
   WatchOptions,
 } from "nonoha-client-js"
 import type { ValueKind } from "./interpret"
+import { formatHz } from "./value-renderers"
 import { useEngineCapabilitiesFor } from "@/src/stores/engine-capabilities-store"
 
 /**
@@ -505,6 +506,24 @@ export function usePortFlowing(ref: InspectorPortRef | null): boolean {
     subscribe,
     () => (inspector && ref ? isFlowing(inspector.activityOf(ref)) : false),
     () => false,
+  )
+}
+
+/**
+ * The port's rate as shown ("15", "1.0"), "" while it does not flow. Re-renders
+ * only when that text changes, not on every activity row. Pass null to skip
+ * (e.g. while the rate is not shown).
+ */
+export function usePortRateText(ref: InspectorPortRef | null): string {
+  const inspector = useInspector()
+  const subscribe = usePortSubscription(inspector, ref)
+  return useSyncExternalStore(
+    subscribe,
+    () => {
+      const entry = inspector && ref ? inspector.activityOf(ref) : undefined
+      return entry && isFlowing(entry) ? formatHz(entry.hz) : ""
+    },
+    () => "",
   )
 }
 

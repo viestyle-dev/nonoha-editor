@@ -7,7 +7,7 @@ import { memo, MouseEvent, useCallback, useMemo, useState } from "react"
 import type { ActivityEntry, InspectorPortRef } from "nonoha-client-js"
 
 import { NodeHandleRight } from "@/src/components/node-handle"
-import { isFlowing, useInspectorLive, usePortActivity } from "@/src/inspector/inspector-store"
+import { isFlowing, useInspectorLive, usePortActivity, usePortFlowing, usePortRateText } from "@/src/inspector/inspector-store"
 import { PeekPopover } from "@/src/inspector/peek-popover"
 import { formatHz, formatNumber } from "@/src/inspector/value-renderers"
 
@@ -19,8 +19,14 @@ export function activityShape(entry: ActivityEntry): string {
 
 export const zoomedInSelector = (s: ReactFlowState) => s.transform[2] >= 1
 
-/** Live type, rate and statistics lines for port tooltips. */
-export function LiveLines({ entry }: { entry: ActivityEntry }) {
+/**
+ * Live type, rate and statistics lines for port tooltips. Follows the port's
+ * activity itself: mounted only while its tooltip is open, so a port does not
+ * re-render on every activity row for a tooltip nobody reads.
+ */
+export function LiveLines({ portRef }: { portRef: InspectorPortRef }) {
+  const entry = usePortActivity(portRef)
+  if (!entry) return null
   const rate = isFlowing(entry) ? `${formatHz(entry.hz)} Hz` : entry.count > 0 ? "idle" : "no values yet"
   return (
     <>
@@ -54,11 +60,13 @@ export const ActivityOutputHandle = memo(function ActivityOutputHandle({
 }) {
   const live = useInspectorLive()
   const portRef = useMemo<InspectorPortRef>(() => ({ node: nodeId, dir: "out", port }), [nodeId, port])
-  const entry = usePortActivity(live ? portRef : null)
+  // What the handle shows, each re-rendering only when it changes: whether
+  // values flow (the ring), and at >= 100% zoom the rate's text
+  const flowing = usePortFlowing(live ? portRef : null)
   const zoomedIn = useStore(zoomedInSelector)
+  const rateText = usePortRateText(live && zoomedIn ? portRef : null)
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
 
-  const flowing = live && isFlowing(entry)
   const glow = live ? alpha(handleColor, 0.45) : undefined
   // A fixed-width slot while monitoring at >= 100% zoom, so nodes do not
   // change width when values start or stop flowing.
@@ -76,9 +84,9 @@ export const ActivityOutputHandle = memo(function ActivityOutputHandle({
           whiteSpace: "nowrap",
         })}
       >
-        {flowing && (
+        {rateText && (
           <span css={css({ padding: "0 4px", borderRadius: 7, background: alpha(handleColor, 0.18) })}>
-            {formatHz(entry!.hz)} Hz
+            {rateText} Hz
           </span>
         )}
       </span>
@@ -96,7 +104,7 @@ export const ActivityOutputHandle = memo(function ActivityOutputHandle({
         title={
           <span style={{ whiteSpace: "pre-line" }}>
             {tooltip}
-            {live && entry && <LiveLines entry={entry} />}
+            {live && <LiveLines portRef={portRef} />}
             {live && "\nClick the name to peek"}
           </span>
         }

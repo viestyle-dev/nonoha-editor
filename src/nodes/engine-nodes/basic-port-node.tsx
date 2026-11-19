@@ -11,9 +11,8 @@ import { useNodeFlowColorsStore } from "@/src/stores/node-flow-colors-store"
 import { getHctFromPortValueType } from "@/src/lib/graph/port-colors"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { portRing, useBreatheDelay } from "@/src/components/breath"
-import { isFlowing, useInspectorLive, usePortActivity } from "@/src/inspector/inspector-store"
+import { useInspectorLive, usePortFlowing, usePortRateText } from "@/src/inspector/inspector-store"
 import { LiveLines, zoomedInSelector } from "@/src/inspector/activity-output-handle"
-import { formatHz } from "@/src/inspector/value-renderers"
 import { PeekPopover } from "@/src/inspector/peek-popover"
 
 export type BasicPortNode = Node<{
@@ -54,10 +53,11 @@ export const BasicPortNode = memo((props: NodeProps<BasicPortNode>) => {
     () => ({ node: "", dir: nodeType === "input" ? "in" : "out", port: portName }),
     [nodeType, portName],
   )
-  const entry = usePortActivity(live ? portRef : null)
-  const flowing = live && isFlowing(entry)
+  // Each re-renders only when what it shows changes (not on every activity row)
+  const flowing = usePortFlowing(live ? portRef : null)
   const breatheDelay = useBreatheDelay(flowing)
   const zoomedIn = useStore(zoomedInSelector)
+  const rateText = usePortRateText(live && zoomedIn ? portRef : null)
   const [peekAnchor, setPeekAnchor] = useState<HTMLElement | null>(null)
   const openPeek = useCallback((event: MouseEvent<HTMLElement>) => {
     event.stopPropagation()
@@ -129,7 +129,7 @@ export const BasicPortNode = memo((props: NodeProps<BasicPortNode>) => {
           title={
             <span style={{ whiteSpace: "pre-line" }}>
               {`[${valuesString}]`}
-              {live && entry && <LiveLines entry={entry} />}
+              {live && <LiveLines portRef={portRef} />}
               {live && "\nClick to peek"}
             </span>
           }
@@ -185,7 +185,7 @@ export const BasicPortNode = memo((props: NodeProps<BasicPortNode>) => {
               fontVariantNumeric: "tabular-nums",
             })}
           >
-            {flowing && `${formatHz(entry!.hz)} Hz`}
+            {rateText && `${rateText} Hz`}
           </Typography>
         )}
 
