@@ -98,7 +98,6 @@ import { buildGraph, refreshGraph } from "./graph-loader"
 import { generateWaypointId, waypointNode } from "@/src/nodes/editor-nodes/waypoint-node"
 import { EDGE_Z_INDEX } from "@/src/api/graph-api"
 import { EdgeConnectionLine } from "@/src/components/basic-node-edge"
-import { BreathPauser } from "@/src/components/breath"
 import { EdgeFocus } from "@/src/components/edge-focus"
 import { EdgeDrawingsProvider } from "@/src/hooks/use-edge-drawing"
 import {
@@ -138,6 +137,11 @@ const GRAPH_EDIT_DISABLED =
 
 /** Built-in views of nonoha-views ("builtin/<id>" in the view catalog). */
 const BUILTIN_VIEWS: readonly DefinedView[] = builtinViews
+
+// <ReactFlow> props that are arrays: one instance each, so a re-render (every
+// drag step) does not hand React Flow a new value to store and announce.
+const SNAP_GRID: [number, number] = [20, 20]
+const PAN_ON_DRAG = [1, 2]
 
 /** Add-menu entries for the views in the catalog (one PluginViewNode prototype each). */
 function ViewPrototypesBridge({
@@ -260,6 +264,9 @@ function PageInner() {
     startTime: 0,
   })
   const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null)
+  const onFlowInit = useCallback((instance: ReactFlowInstance) => {
+    reactFlowInstanceRef.current = instance
+  }, [])
 
   const [routerState, routerActions] = useRouterStore()
 
@@ -2575,20 +2582,17 @@ function PageInner() {
               onConnectStart={onConnectStart}
               onConnectEnd={onConnectEnd}
               snapToGrid={true}
-              snapGrid={[20, 20]}
+              snapGrid={SNAP_GRID}
               panOnScroll
               selectionOnDrag
-              panOnDrag={[1, 2]}
+              panOnDrag={PAN_ON_DRAG}
               selectionMode={SelectionMode.Full}
               deleteKeyCode={null}
-              onInit={(instance: ReactFlowInstance) => {
-                reactFlowInstanceRef.current = instance
-              }}
+              onInit={onFlowInit}
               connectionLineComponent={EdgeConnectionLine}
             >
               <Background gap={20} variant={BackgroundVariant.Dots} />
               <Controls />
-              <BreathPauser />
               <EdgeFocus />
               <ViewportPortal>
                 <OriginMarker />

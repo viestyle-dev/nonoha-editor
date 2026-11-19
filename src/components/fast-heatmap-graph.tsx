@@ -736,7 +736,7 @@ const FastHeatmapGraph = forwardRef<
     uplotRef.current.redraw()
   }, [buildData, resetScale, syncOffscreen])
 
-  const painter = useRafPainter(paint)
+  const painter = useRafPainter(paint, containerRef)
 
   useEffect(() => {
     painter.schedule()

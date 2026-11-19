@@ -13,9 +13,9 @@ import { HIDDEN_EDGE_CLASS } from "@/src/components/basic-node-edge"
  * the pointer changes nothing. One <style> switches it: no edge re-renders.
  * A node without edges (or the $graph frame) fades nothing.
  *
- * The rules are made in the store selector, again only when the nodes or
- * edges change, and the component renders only when they differ: a drag
- * changes the nodes on every update but not the selection.
+ * The rules are made in the store selector, again only when the edges or the
+ * selected nodes change, and the component renders only when they differ: a
+ * drag changes the nodes on every update but not the selection.
  */
 
 const FADED_OPACITY = 0.15
@@ -44,16 +44,24 @@ function focusRules(nodes: readonly Node[], edges: readonly Edge[]): string {
   )
 }
 
+/** Same nodes in the same order with the same selection (positions may differ). */
+function sameSelection(a: readonly Node[], b: readonly Node[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; ++i) if (a[i].id !== b[i].id || a[i].selected !== b[i].selected) return false
+  return true
+}
+
 export function EdgeFocus() {
   const selector = useMemo(() => {
-    let nodes: unknown = null
+    let nodes: readonly Node[] = []
     let edges: unknown = null
     let rules = ""
     return (s: ReactFlowState) => {
       if (s.nodes === nodes && s.edges === edges) return rules
+      const same = s.edges === edges && sameSelection(s.nodes, nodes)
       nodes = s.nodes
       edges = s.edges
-      rules = focusRules(s.nodes, s.edges)
+      if (!same) rules = focusRules(s.nodes, s.edges) // a drag step keeps the rules
       return rules
     }
   }, [])

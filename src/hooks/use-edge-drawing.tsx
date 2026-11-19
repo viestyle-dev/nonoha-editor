@@ -2,7 +2,7 @@
 
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
-import { ReactFlowState, useStore, useStoreApi } from "@xyflow/react"
+import { Node, ReactFlowState, useStore, useStoreApi } from "@xyflow/react"
 import {
   edgeDrawings,
   outputKey,
@@ -15,10 +15,10 @@ import {
  * The graph's edge drawings (see edge-drawing.ts), one store per graph
  * (EdgeDrawingsProvider) shared by every edge and waypoint. React Flow's
  * store changes on every pan frame and drag update, and calls every
- * subscriber's selector then; the drawings change only with the edges or the
- * nodes (a node carries its outputs' `drawAs`). So the one store recomputes
- * them when those arrays change and tells the edges and waypoints only when
- * the result differs.
+ * subscriber's selector then; the drawings change only with the edges or a
+ * node's data (it carries the node's outputs' `drawAs`). So the one store
+ * recomputes them when the edges or a node's data change (not on a drag step)
+ * and tells the edges and waypoints only when the result differs.
  *
  * The provider also finds React Flow's edge label layer once, for
  * EdgeLabelPortal: React Flow's EdgeLabelRenderer looks it up with a
@@ -37,6 +37,13 @@ export function drawAsOf(state: ReactFlowState) {
     (state.nodeLookup.get(source)?.data as { drawAs?: Record<string, DrawAs> } | undefined)?.drawAs?.[
       sourceHandle ?? ""
     ]
+}
+
+/** Same nodes in the same order with the same `data` objects (positions may differ). */
+function sameNodeData(a: readonly Node[], b: readonly Node[]): boolean {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; ++i) if (a[i].id !== b[i].id || a[i].data !== b[i].data) return false
+  return true
 }
 
 /** The drawings and a signature of them (equal signatures: nothing to tell). */
@@ -65,7 +72,7 @@ class DrawingsStore {
   drawings: Drawings
   private signature: string
   private edges: unknown
-  private nodes: unknown
+  private nodes: readonly Node[]
   private readonly listeners = new Set<() => void>()
 
   constructor(private readonly flow: FlowStore) {
@@ -83,8 +90,10 @@ class DrawingsStore {
 
   private update(state: ReactFlowState): void {
     if (state.edges === this.edges && state.nodes === this.nodes) return // a pan frame
+    const sameData = state.edges === this.edges && sameNodeData(state.nodes, this.nodes)
     this.edges = state.edges
     this.nodes = state.nodes
+    if (sameData) return // a drag step or a selection: drawings read node data only
     const [drawings, signature] = compute(state)
     if (signature === this.signature) return // e.g. a node dragged
     this.drawings = drawings

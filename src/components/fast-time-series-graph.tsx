@@ -5,6 +5,7 @@ import {
   CSSProperties,
   forwardRef,
   memo,
+  MutableRefObject,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -54,11 +55,23 @@ export interface FastTimeSeriesGraphProps {
   traceColors?: string[]
   /** ReactFlow viewport zoom factor for correcting mouse coordinates */
   viewportZoom?: number
+  /**
+   * Receives the graph's feed while it is mounted (a prop rather than a ref
+   * handle: next/dynamic does not forward refs).
+   */
+  feed?: MutableRefObject<FastTimeSeriesFeed | null>
 }
 
 export interface FastTimeSeriesGraphHandle {
   resetScale: () => void
 }
+
+/**
+ * Plots `data` on the next frame without a React render (a stream calls it
+ * for every update). The graph reads it at paint time: the caller may keep
+ * filling the same arrays. A new `plotData` prop replaces it.
+ */
+export type FastTimeSeriesFeed = (data: FastTimeSeriesPlotData) => void
 
 // Toolbar component (memoized to prevent re-renders during graph updates)
 const GraphToolbar = memo(
@@ -174,6 +187,14 @@ const FastTimeSeriesGraph = forwardRef<
   const propsRef = useRef(props)
   propsRef.current = props
 
+  // The plotted data: the plotData prop, or what push() handed over since.
+  const dataRef = useRef(props.plotData)
+  const propDataRef = useRef(props.plotData)
+  if (propDataRef.current !== props.plotData) {
+    propDataRef.current = props.plotData
+    dataRef.current = props.plotData
+  }
+
   // Store ReactFlow viewportZoom in ref for use in cursor.move callback
   const viewportZoomRef = useRef(props.viewportZoom ?? 1)
   viewportZoomRef.current = props.viewportZoom ?? 1
@@ -234,7 +255,7 @@ const FastTimeSeriesGraph = forwardRef<
     savedYScaleRef.current = null
 
     const u = uplotRef.current
-    const xLen = propsRef.current.plotData.x.length
+    const xLen = dataRef.current.x.length
     const yRange = propsRef.current.yRange
 
     // Compute Y range from visible series data
@@ -248,8 +269,6 @@ const FastTimeSeriesGraph = forwardRef<
     })
   }, [])
 
-  // Expose reset function to parent
-  useImperativeHandle(ref, () => ({ resetScale }), [resetScale])
 
   // Mouse coordinate correction callback (considering ReactFlow zoom).
   // Bypasses uPlot's cached bounding rect by computing directly from the
@@ -554,7 +573,7 @@ const FastTimeSeriesGraph = forwardRef<
     uplotRef.current.destroy()
 
     // Rebuild with new options (auto setting changes based on yRange presence)
-    const data = buildData(propsRef.current.plotData)
+    const data = buildData(dataRef.current)
     const opts = buildOptions(
       currentTraceCount,
       propsRef.current.graphWidth,
@@ -572,8 +591,9 @@ const FastTimeSeriesGraph = forwardRef<
     if (!uplotRef.current) return
 
     const p = propsRef.current
+    const plotData = dataRef.current
     const currentTraceCount = uplotRef.current.series.length - 1 // Exclude x-axis
-    const newTraceCount = p.plotData.traces.length
+    const newTraceCount = plotData.traces.length
 
     // Rebuild uPlot if trace count changes
     if (currentTraceCount !== newTraceCount && newTraceCount > 0) {
@@ -583,8 +603,8 @@ const FastTimeSeriesGraph = forwardRef<
       // Destroy existing uPlot
       uplotRef.current.destroy()
 
-      cursorPositionRef.current = p.plotData.cursorPosition
-      const data = buildData(p.plotData)
+      cursorPositionRef.current = plotData.cursorPosition
+      const data = buildData(plotData)
       const opts = buildOptions(
         newTraceCount,
         p.graphWidth,
@@ -595,8 +615,8 @@ const FastTimeSeriesGraph = forwardRef<
       uplotRef.current = new uPlot(opts, data, container)
     } else if (newTraceCount > 0) {
       // Efficiently update data only when trace count is the same
-      cursorPositionRef.current = p.plotData.cursorPosition
-      const data = buildData(p.plotData)
+      cursorPositionRef.current = plotData.cursorPosition
+      const data = buildData(plotData)
       // setData(data, false) preserves scales but skips redraw
       uplotRef.current.setData(data, false)
 
@@ -613,12 +633,28 @@ const FastTimeSeriesGraph = forwardRef<
     }
   }, [buildData, buildOptions])
 
-  const painter = useRafPainter(paint)
+  const painter = useRafPainter(paint, containerRef)
 
   // Data update: only schedule; the painter draws on the next frame.
   useEffect(() => {
     painter.schedule()
   }, [props.plotData, painter])
+
+  // Expose reset function to parent
+  useImperativeHandle(ref, () => ({ resetScale }), [resetScale])
+
+  // Hand the feed to the parent while mounted
+  const feed = props.feed
+  useEffect(() => {
+    if (!feed) return
+    feed.current = (data: FastTimeSeriesPlotData) => {
+      dataRef.current = data
+      painter.schedule()
+    }
+    return () => {
+      feed.current = null
+    }
+  }, [feed, painter])
 
   // Theme change: restyle in place (strokes resolve through themeRef).
   const isFirstThemeRef = useRef(true)

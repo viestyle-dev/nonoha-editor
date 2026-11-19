@@ -190,7 +190,7 @@ export function useImageFramePainter(
       reportedErrorRef.current = errorRef.current
       optionsRef.current.onError?.(errorRef.current)
     }
-  })
+  }, canvasRef)
 
   const setError = useCallback(
     (error: string | undefined) => {

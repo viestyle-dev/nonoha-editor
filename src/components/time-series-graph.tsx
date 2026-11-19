@@ -156,7 +156,7 @@ export default function TimeSeriesGraph(props: TimeSeriesGraphProps) {
       buildTraces(plotDataRef.current, themeRef.current),
       refLayout.current
     )
-  })
+  }, refPlot)
 
   useEffect(() => {
     painter.schedule()

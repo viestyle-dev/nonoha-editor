@@ -210,7 +210,7 @@ export default function HeatmapPlot(props: HeatmapProps) {
         layoutRef.current
       )
     }
-  })
+  }, plotRef)
 
   useEffect(() => {
     dataDirtyRef.current = true

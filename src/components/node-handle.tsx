@@ -3,7 +3,7 @@ import { Typography } from "@mui/material"
 import { Handle, Position } from "@xyflow/react"
 import { forwardRef, MouseEvent, ReactNode } from "react"
 
-import { portRing, useBreatheDelay } from "@/src/components/breath"
+import { portRing } from "@/src/components/port-ring"
 import { useThemeStore } from "@/src/stores/theme-store"
 
 /** Height of one handle row, inputs and outputs alike. */
@@ -63,7 +63,7 @@ export interface NodeHandleRightProps {
   handleColor?: string
   /** Ring color while the inspector reports this port's activity; undefined = no ring. */
   glow?: string
-  /** Values flow through the port now: the ring breathes. */
+  /** Values flow through the port now: the ring shows. */
   flowing?: boolean
   /** Shown before the label (e.g. a rate badge). */
   badge?: ReactNode
@@ -74,7 +74,6 @@ export interface NodeHandleRightProps {
 export const NodeHandleRight = forwardRef<HTMLDivElement, NodeHandleRightProps>(
   // `rest`: what a wrapping Tooltip passes (its listeners and aria attributes)
   function NodeHandleRight({ id, label, handleColor, glow, flowing = false, badge, onLabelClick, ...rest }, ref) {
-    const breatheDelay = useBreatheDelay(flowing)
     return (
       <div {...rest} ref={ref} css={row}>
         {badge}
@@ -91,9 +90,7 @@ export const NodeHandleRight = forwardRef<HTMLDivElement, NodeHandleRightProps>(
             width: HANDLE_SIZE,
             height: HANDLE_SIZE,
             background: handleColor,
-            ...(glow
-              ? ({ "--port-glow": glow, "--breathe-delay": breatheDelay } as Record<string, string | undefined>)
-              : null),
+            ...(glow ? ({ "--port-glow": glow } as Record<string, string>) : null),
           }}
           css={glow ? portRing : undefined}
           data-flowing={glow && flowing ? "" : undefined}

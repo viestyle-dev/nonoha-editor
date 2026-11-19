@@ -133,7 +133,7 @@ export default function ScatterPlot(props: ScatterPlotProps) {
       }),
       refLayout.current
     )
-  })
+  }, refPlot)
 
   useEffect(() => {
     painter.schedule()

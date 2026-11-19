@@ -41,7 +41,7 @@ export function LiveLines({ portRef }: { portRef: InspectorPortRef }) {
 
 /**
  * Output port of an engine node with inspector decorations:
- * - the handle breathes while values flow (the engine decides when a port
+ * - the handle shows a ring while values flow (the engine decides when a port
  *   stopped), with the rate shown at >= 100% zoom
  * - the tooltip adds live type, rate and min/max/mean
  * - clicking the label opens a peek popover

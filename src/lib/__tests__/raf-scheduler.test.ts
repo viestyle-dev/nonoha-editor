@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { createFrameScheduler, FrameSchedulerEnv } from "@/src/lib/raf-scheduler"
+import { createFrameScheduler, elementFrameEnv, FrameSchedulerEnv } from "@/src/lib/raf-scheduler"
 
 // Manual frame clock + visibility switch.
 function fakeEnv() {
@@ -154,5 +154,81 @@ describe("createFrameScheduler", () => {
     s.schedule()
     clock.tick()
     expect(paint).not.toHaveBeenCalled()
+  })
+})
+
+// requestAnimationFrame stub: handles are 1-based indexes; a cancelled frame does nothing.
+function stubFrames() {
+  const frames: (() => void)[] = []
+  vi.stubGlobal("requestAnimationFrame", (cb: () => void) => frames.push(cb))
+  vi.stubGlobal("cancelAnimationFrame", (handle: number) => {
+    frames[handle - 1] = () => {}
+  })
+  return {
+    get count() {
+      return frames.length
+    },
+    tick() {
+      frames.splice(0).forEach(cb => cb())
+    },
+  }
+}
+
+describe("elementFrameEnv", () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it("holds paints while the element is off screen and paints once when it shows", () => {
+    let report!: (entries: { isIntersecting: boolean }[]) => void
+    const observed: unknown[] = []
+    let disconnected = 0
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(callback: typeof report) {
+          report = callback
+        }
+        observe(target: unknown) {
+          observed.push(target)
+        }
+        disconnect() {
+          disconnected++
+        }
+      },
+    )
+    const frames = stubFrames()
+    const element = {} as Element
+    const paint = vi.fn()
+    const s = createFrameScheduler(paint, elementFrameEnv(element))
+    expect(observed).toEqual([element])
+
+    report([{ isIntersecting: false }])
+    for (let i = 0; i < 5; i++) s.schedule()
+    expect(frames.count).toBe(0) // no frame requested off screen
+    report([{ isIntersecting: true }])
+    expect(frames.count).toBe(1)
+    frames.tick()
+    expect(paint).toHaveBeenCalledTimes(1)
+
+    // Leaving the screen with a frame pending drops that frame.
+    s.schedule()
+    report([{ isIntersecting: false }])
+    frames.tick()
+    expect(paint).toHaveBeenCalledTimes(1)
+    report([{ isIntersecting: true }])
+    frames.tick()
+    expect(paint).toHaveBeenCalledTimes(2)
+
+    s.dispose()
+    expect(disconnected).toBe(1)
+  })
+
+  it("is the page's environment without IntersectionObserver", () => {
+    const frames = stubFrames()
+    const paint = vi.fn()
+    const s = createFrameScheduler(paint, elementFrameEnv({} as Element))
+    s.schedule()
+    frames.tick()
+    expect(paint).toHaveBeenCalledTimes(1)
+    s.dispose()
   })
 })

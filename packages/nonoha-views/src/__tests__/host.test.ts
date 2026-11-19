@@ -152,6 +152,64 @@ describe('createViewHost', () => {
     expect(frames.length).toBe(0) // nothing scheduled after destroy
   })
 
+  it('holds draws while the element is off screen, and runs them when it shows', () => {
+    let report!: (entries: { isIntersecting: boolean }[]) => void
+    const observed: unknown[] = []
+    let disconnected = 0
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        constructor(callback: typeof report) {
+          report = callback
+        }
+        observe(target: unknown) {
+          observed.push(target)
+        }
+        disconnect() {
+          disconnected++
+        }
+      },
+    )
+    const seen: number[] = []
+    let draws = 0
+    let ctx!: ViewContext
+    const draw = () => {
+      draws++
+    }
+    const view = defineView({
+      id: 'o',
+      inputs: [{ name: 'x', accepts: ['f32'] }],
+      mount(_el, context) {
+        ctx = context
+        context.onValues('x', values => {
+          seen.push((values[0].array as Float32Array)[0])
+          context.requestFrame(draw)
+        })
+      },
+    })
+    const host = createViewHost(view, element, { theme, size })
+    expect(observed).toEqual([element])
+    report([{ isIntersecting: false }])
+    host.deliver('x', [f32(1)])
+    host.deliver('x', [f32(2)])
+    expect(seen).toEqual([1, 2]) // values keep arriving
+    expect(frames.length).toBe(0)
+    report([{ isIntersecting: true }])
+    expect(frames.length).toBe(1)
+    frames.shift()!()
+    expect(draws).toBe(1)
+    // Off screen between the request and the frame: the draw waits.
+    ctx.requestFrame(draw)
+    report([{ isIntersecting: false }])
+    frames.shift()!()
+    expect(draws).toBe(1)
+    report([{ isIntersecting: true }])
+    frames.shift()!()
+    expect(draws).toBe(2)
+    host.destroy()
+    expect(disconnected).toBe(1)
+  })
+
   it('gives views no way to write to a graph', () => {
     let ctx!: ViewContext
     const view = defineView({

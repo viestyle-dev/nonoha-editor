@@ -1,6 +1,7 @@
 // Coalesces "something changed, repaint" requests into at most one paint per
-// animation frame, and holds paints while the document is hidden (one catch-
-// up paint runs when it becomes visible again).
+// animation frame, and holds paints while the document (or, with
+// elementFrameEnv, the painted element) is hidden: one catch-up paint runs
+// when it becomes visible again.
 //
 // The environment (frame request, visibility) is injected so the logic is
 // unit-testable without a DOM; browserFrameEnv() is the real one.
@@ -94,6 +95,34 @@ export function createFrameScheduler(
     },
     get pending() {
       return handle !== null
+    },
+  }
+}
+
+// browserFrameEnv, also hidden while `element` is off screen (scrolled or
+// panned away): a canvas that repaints there still costs the browser a frame
+// of compositing. Without IntersectionObserver it is browserFrameEnv.
+export function elementFrameEnv(element: Element): FrameSchedulerEnv {
+  const page = browserFrameEnv()
+  if (typeof IntersectionObserver === "undefined") return page
+  let onScreen = true
+  return {
+    requestFrame: page.requestFrame,
+    cancelFrame: page.cancelFrame,
+    isHidden: () => !onScreen || page.isHidden(),
+    onVisibilityChange: listener => {
+      const offPage = page.onVisibilityChange(listener)
+      const observer = new IntersectionObserver(entries => {
+        const next = entries[entries.length - 1].isIntersecting
+        if (next === onScreen) return
+        onScreen = next
+        listener()
+      })
+      observer.observe(element)
+      return () => {
+        offPage()
+        observer.disconnect()
+      }
     },
   }
 }
