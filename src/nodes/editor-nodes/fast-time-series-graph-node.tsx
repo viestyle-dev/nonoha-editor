@@ -5,8 +5,8 @@ import {
   Node,
   NodeProps,
   useReactFlow,
-  useViewport,
 } from "@xyflow/react"
+import { useZoom } from "@/src/hooks/use-zoom"
 import {
   alpha,
   Button,
@@ -329,7 +329,7 @@ export type FastTimeSeriesGraphNode = Node<{
 export const FastTimeSeriesGraphNode = memo(
   (props: NodeProps<FastTimeSeriesGraphNode>) => {
     const { setNodes } = useReactFlow()
-    const { zoom: viewportZoom } = useViewport()
+    const viewportZoom = useZoom()
     const [{ colors }] = useThemeStore()
 
     const graphRef = useRef<FastTimeSeriesGraphHandle>(null)

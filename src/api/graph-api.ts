@@ -22,6 +22,12 @@ export function getNodeType(
 }
 
 /**
+ * Every edge's zIndex, loaded or connected now: one layer, so which edge is
+ * drawn over which does not depend on how it was made.
+ */
+export const EDGE_Z_INDEX = -2
+
+/**
  * Fetches graph edges from the engine API and transforms them to React Flow format.
  */
 export async function fetchGraphEdges(
@@ -48,7 +54,7 @@ export async function fetchGraphEdges(
         target: targetNode,
         targetHandle: targetPortParts.join("."),
         type: "BasicNodeEdge",
-        zIndex: -2,
+        zIndex: EDGE_Z_INDEX,
         data: {
           source: { type: "node" },
           target: { type: "node" },
@@ -63,7 +69,7 @@ export async function fetchGraphEdges(
         sourceHandle: sourcePortParts.join("."),
         target: `$output:${targetPortParts.join(".")}`,
         type: "BasicNodeEdge",
-        zIndex: -2,
+        zIndex: EDGE_Z_INDEX,
         data: {
           source: { type: "node" },
           target: { type: "output" },
@@ -78,7 +84,7 @@ export async function fetchGraphEdges(
         target: targetNode,
         targetHandle: targetPortParts.join("."),
         type: "BasicNodeEdge",
-        zIndex: -2,
+        zIndex: EDGE_Z_INDEX,
         data: {
           source: { type: "input" },
           target: { type: "node" },
@@ -122,7 +128,7 @@ export async function fetchEditorEdges(
     sourceHandle: settings.sourceHandle,
     targetHandle: settings.targetHandle,
     type: "BasicNodeEdge",
-    zIndex: -2,
+    zIndex: EDGE_Z_INDEX,
     data: {
       source: { type: getNodeType(settings.source) },
       target: { type: getNodeType(settings.target) },

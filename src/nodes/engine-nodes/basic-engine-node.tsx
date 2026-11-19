@@ -34,10 +34,8 @@ import { NodePropertyInputField } from "@/src/components/node-property-input-fie
 import { fetchGraphEdges } from "@/src/stores/node-flow-store"
 import { mergeEngineEdges } from "@/src/lib/graph/edge-merge"
 import { EditableTypography } from "@/src/components/editable-typography"
-import {
-  getHctFromPortValueType,
-  useNodeFlowColorsStore,
-} from "@/src/stores/node-flow-colors-store"
+import { useNodeFlowColorsStore } from "@/src/stores/node-flow-colors-store"
+import { getHctFromPortValueType } from "@/src/lib/graph/port-colors"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { SnackbarActionClose } from "@/src/components/snackbar-actions"
 import { useNodeCatalog } from "@/src/stores/node-catalog-store"

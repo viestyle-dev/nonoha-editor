@@ -415,6 +415,50 @@ export function useInspectorState(): InspectorUiState {
   )
 }
 
+/** One fact of the inspector's state; re-renders only when that fact changes (not on every status). */
+function useInspectorFact(fact: (state: InspectorUiState) => boolean): boolean {
+  const inspector = useInspector()
+  return useSyncExternalStore(
+    inspector ? inspector.subscribeState : noopSubscribe,
+    () => (inspector ? fact(inspector.getState()) : false),
+    () => false,
+  )
+}
+
+const isLive = (state: InspectorUiState) => Boolean(state.supported && state.enabled)
+const isObserving = (state: InspectorUiState) =>
+  isLive(state) && (state.status.state === "ok" || state.status.state === "throttled")
+
+/** The inspector decorates ports: the engine has one and it is turned on. */
+export function useInspectorLive(): boolean {
+  return useInspectorFact(isLive)
+}
+
+/**
+ * The engine is observing ports now: activity tells what flows. Not while
+ * connecting, paused (the engine lags) or hidden (a background tab), when
+ * every port only looks stopped.
+ */
+export function useInspectorObserving(): boolean {
+  return useInspectorFact(isObserving)
+}
+
+/** Values flow through the port now (the engine decides when a port stopped). */
+export function isFlowing(entry: ActivityEntry | undefined): boolean {
+  return entry !== undefined && entry.hz > 0
+}
+
+/**
+ * The activity port behind an edge's source handle: an engine node's output
+ * or the graph's own input / output port (node ""). null for editor nodes.
+ */
+export function sourceActivityRef(source: string, sourceHandle: string | null | undefined): InspectorPortRef | null {
+  if (source.startsWith("$input:")) return { node: "", dir: "in", port: source.slice("$input:".length) }
+  if (source.startsWith("$output:")) return { node: "", dir: "out", port: source.slice("$output:".length) }
+  if (source.startsWith("$") || !sourceHandle) return null
+  return { node: source, dir: "out", port: sourceHandle }
+}
+
 /**
  * Why a watched port shows nothing (too large to show, gone, refused), or
  * undefined. Re-renders only when that port's problem changes.
@@ -439,6 +483,33 @@ export function usePortProblem(ref: InspectorPortRef | null): string | undefined
  */
 export function usePortActivity(ref: InspectorPortRef | null): ActivityEntry | undefined {
   const inspector = useInspector()
+  const subscribe = usePortSubscription(inspector, ref)
+  const key = ref ? portKey(ref) : ""
+  const version = useSyncExternalStore(
+    subscribe,
+    () => (inspector && key ? inspector.portVersion(key) : 0),
+    () => 0,
+  )
+  void version // the entry object is reused; the version tells React it changed
+  return inspector && ref ? inspector.activityOf(ref) : undefined
+}
+
+/**
+ * Whether values flow through one port (re-renders only when it starts or
+ * stops, not on every activity row). Pass null to skip.
+ */
+export function usePortFlowing(ref: InspectorPortRef | null): boolean {
+  const inspector = useInspector()
+  const subscribe = usePortSubscription(inspector, ref)
+  return useSyncExternalStore(
+    subscribe,
+    () => (inspector && ref ? isFlowing(inspector.activityOf(ref)) : false),
+    () => false,
+  )
+}
+
+/** Registers the port for activity while mounted; returns the subscribe function for its entry. */
+function usePortSubscription(inspector: EditorInspector | null, ref: InspectorPortRef | null) {
   const node = ref?.node
   const dir = ref?.dir
   const port = ref?.port
@@ -449,15 +520,8 @@ export function usePortActivity(ref: InspectorPortRef | null): ActivityEntry | u
     return inspector.registerPort({ node, dir, port })
   }, [inspector, node, dir, port])
 
-  const subscribe = useCallback(
+  return useCallback(
     (listener: Listener) => (inspector && key ? inspector.subscribePort(key, listener) : () => {}),
     [inspector, key],
   )
-  const version = useSyncExternalStore(
-    subscribe,
-    () => (inspector && key ? inspector.portVersion(key) : 0),
-    () => 0,
-  )
-  void version // the entry object is reused; the version tells React it changed
-  return inspector && ref ? inspector.activityOf(ref) : undefined
 }

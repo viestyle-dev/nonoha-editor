@@ -1,64 +1,68 @@
 import { describe, it, expect } from "vitest"
 import {
-  bezierSegment,
   buildEdgePath,
   findInsertionIndex,
+  samePoints,
+  segmentCorners,
+  waypointCenter,
+  WAYPOINT_SIZE,
   type Point,
 } from "../edge-path"
 
-describe("bezierSegment", () => {
-  it("returns a cubic bezier C command", () => {
-    const result = bezierSegment({ x: 0, y: 0 }, { x: 100, y: 0 })
-    expect(result).toMatch(/^C /)
-    expect(result).toContain("100,0")
+/** Every run of the corners is horizontal, vertical or 45°. */
+function octilinear(corners: Point[]): boolean {
+  for (let i = 0; i < corners.length - 1; i++) {
+    const dx = Math.abs(corners[i + 1].x - corners[i].x)
+    const dy = Math.abs(corners[i + 1].y - corners[i].y)
+    if (dx > 1e-9 && dy > 1e-9 && Math.abs(dx - dy) > 1e-9) return false
+  }
+  return true
+}
+
+describe("segmentCorners", () => {
+  it("leaves and enters horizontally, taking the rise in one 45° run in the middle", () => {
+    const c = segmentCorners({ x: 0, y: 0 }, { x: 300, y: 100 })
+    expect(c).toEqual([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 200, y: 100 }, { x: 300, y: 100 }])
   })
 
-  it("ends at the target point", () => {
-    const result = bezierSegment({ x: 10, y: 20 }, { x: 200, y: 50 })
-    expect(result).toMatch(/200,50$/)
+  it("goes vertical between two 45° turns when the rise is larger than the run", () => {
+    const c = segmentCorners({ x: 0, y: 0 }, { x: 100, y: 400 })
+    expect(octilinear(c)).toBe(true)
+    expect(c[1]).toEqual({ x: 16, y: 0 }) // the lead out of the output
+    expect(c[c.length - 2]).toEqual({ x: 84, y: 400 }) // the lead into the input
+    expect(c.some((p, i) => i > 0 && p.x === c[i - 1].x && p.y !== c[i - 1].y)).toBe(true) // a vertical run
   })
 
-  it("uses horizontal control points", () => {
-    const result = bezierSegment({ x: 0, y: 100 }, { x: 200, y: 100 })
-    // Control points should have same Y as their respective endpoints
-    // Format: C cx1,cy1 cx2,cy2 x,y
-    const match = result.match(/^C ([\d.]+),([\d.]+) ([\d.]+),([\d.]+)/)
-    expect(match).not.toBeNull()
-    expect(Number(match![2])).toBe(100) // cy1 = sourceY
-    expect(Number(match![4])).toBe(100) // cy2 = targetY
+  it("loops around in a U when going back left", () => {
+    const c = segmentCorners({ x: 300, y: 0 }, { x: 0, y: 10 })
+    expect(octilinear(c)).toBe(true)
+    expect(c[1].x).toBeGreaterThan(300) // out to the right first
+    expect(c[c.length - 2].x).toBeLessThan(0) // in from the left
+    expect(Math.max(...c.map(p => p.y))).toBe(50) // below the lower end
+  })
+
+  it("stays octilinear for any ends", () => {
+    for (const [x, y] of [[50, 3], [33, -200], [400, -399], [10, 10], [-5, 300], [600, 0]]) {
+      expect(octilinear(segmentCorners({ x: 0, y: 0 }, { x, y }))).toBe(true)
+    }
   })
 })
 
 describe("buildEdgePath", () => {
-  it("returns M...C path for direct connection (no waypoints)", () => {
-    const path = buildEdgePath({ x: 0, y: 0 }, { x: 100, y: 0 }, [])
-    expect(path).toMatch(/^M 0,0 C/)
-    expect(path).toMatch(/100,0$/)
+  it("starts at the source and ends at the target", () => {
+    const path = buildEdgePath({ x: 0, y: 0 }, { x: 300, y: 100 }, [])
+    expect(path).toMatch(/^M 0,0 /)
+    expect(path).toMatch(/L 300,100$/)
   })
 
-  it("includes waypoint in path", () => {
-    const path = buildEdgePath(
-      { x: 0, y: 0 },
-      { x: 200, y: 0 },
-      [{ x: 100, y: 50 }],
-    )
-    // Should have 2 bezier segments: source→wp and wp→target
-    const cCount = (path.match(/C /g) || []).length
-    expect(cCount).toBe(2)
-    expect(path).toContain("100,50")
+  it("rounds each corner", () => {
+    const path = buildEdgePath({ x: 0, y: 0 }, { x: 300, y: 100 }, [])
+    expect((path.match(/ Q /g) || []).length).toBe(2)
   })
 
-  it("handles multiple waypoints", () => {
-    const path = buildEdgePath(
-      { x: 0, y: 0 },
-      { x: 300, y: 0 },
-      [
-        { x: 100, y: 50 },
-        { x: 200, y: -50 },
-      ],
-    )
-    const cCount = (path.match(/C /g) || []).length
-    expect(cCount).toBe(3) // 3 segments for 2 waypoints
+  it("passes through each waypoint", () => {
+    const path = buildEdgePath({ x: 0, y: 0 }, { x: 600, y: 0 }, [{ x: 300, y: 100 }])
+    expect(path).toContain("300,100")
   })
 })
 
@@ -89,5 +93,23 @@ describe("findInsertionIndex", () => {
     // Click near the midpoint of wp2→target segment (250, 0)
     const idx3 = findInsertionIndex(250, 0, source, target, waypoints)
     expect(idx3).toBe(2) // Insert after wp2
+  })
+})
+
+describe("waypointCenter", () => {
+  it("is the middle of the waypoint node, where its centered position is", () => {
+    // origin [0.5, 0.5]: React Flow's positionAbsolute is the top-left, half a size before the position
+    const position = { x: 100, y: 40 }
+    const topLeft = { x: position.x - WAYPOINT_SIZE / 2, y: position.y - WAYPOINT_SIZE / 2 }
+    expect(waypointCenter(topLeft)).toEqual(position)
+  })
+})
+
+describe("samePoints", () => {
+  it("compares coordinates, not arrays", () => {
+    expect(samePoints([{ x: 1, y: 2 }], [{ x: 1, y: 2 }])).toBe(true)
+    expect(samePoints([{ x: 1, y: 2 }], [{ x: 1, y: 3 }])).toBe(false)
+    expect(samePoints([], [{ x: 1, y: 2 }])).toBe(false)
+    expect(samePoints([], [])).toBe(true)
   })
 })

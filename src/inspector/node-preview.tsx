@@ -7,7 +7,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react"
 import type { InspectorPortRef } from "nonoha-client-js"
 
 import { useThemeStore } from "@/src/stores/theme-store"
-import { useInspector, useInspectorState } from "@/src/inspector/inspector-store"
+import { useInspector, useInspectorLive } from "@/src/inspector/inspector-store"
 import { InspectedValueView } from "@/src/inspector/inspected-value-view"
 import { colorOrderKey, readColorOrder } from "@/src/inspector/peek-popover"
 
@@ -27,9 +27,9 @@ export function NodePreviewToggle({
   preview: string | undefined
   onChange: (port: string | undefined) => void
 }) {
-  const { supported, enabled } = useInspectorState()
+  const live = useInspectorLive()
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
-  if (!supported || !enabled || outputs.length === 0) return null
+  if (!live || outputs.length === 0) return null
   return (
     <>
       <Tooltip title="Preview an output in the node">
@@ -75,7 +75,7 @@ export function NodePreviewToggle({
 export const NodePreview = memo(function NodePreview({ nodeId, port }: { nodeId: string; port: string }) {
   const [{ colors }] = useThemeStore()
   const inspector = useInspector()
-  const { supported, enabled } = useInspectorState()
+  const live = useInspectorLive()
   const portRef = useMemo<InspectorPortRef>(() => ({ node: nodeId, dir: "out", port }), [nodeId, port])
   const box = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
@@ -94,7 +94,6 @@ export const NodePreview = memo(function NodePreview({ nodeId, port }: { nodeId:
     return inspector.holdPreviewSlot(setGranted)
   }, [inspector, visible])
 
-  const live = Boolean(supported && enabled)
   const colorOrder = inspector ? readColorOrder(colorOrderKey(inspector.graphName, portRef)) : "rgb"
   return (
     <div

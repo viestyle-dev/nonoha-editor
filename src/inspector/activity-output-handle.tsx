@@ -7,23 +7,14 @@ import { memo, MouseEvent, useCallback, useMemo, useState } from "react"
 import type { ActivityEntry, InspectorPortRef } from "nonoha-client-js"
 
 import { NodeHandleRight } from "@/src/components/node-handle"
-import { useInspector, useInspectorState, usePortActivity } from "@/src/inspector/inspector-store"
+import { isFlowing, useInspectorLive, usePortActivity } from "@/src/inspector/inspector-store"
 import { PeekPopover } from "@/src/inspector/peek-popover"
-import { formatNumber } from "@/src/inspector/value-renderers"
+import { formatHz, formatNumber } from "@/src/inspector/value-renderers"
 
 /** "f32[90×160×2]" from an activity entry (shape without the batch; the engine sends type names). */
 export function activityShape(entry: ActivityEntry): string {
   const dims = entry.shape ? entry.shape.slice(1) : []
   return `${entry.dtype ?? "?"}[${dims.join("×") || "1"}]`
-}
-
-export function formatHz(hz: number): string {
-  return hz >= 10 ? hz.toFixed(0) : hz.toFixed(1)
-}
-
-/** Values flowing now (dispatched within the last 2 s). */
-export function isFlowing(entry: ActivityEntry | undefined): boolean {
-  return !!entry && entry.hz > 0 && entry.age !== null && entry.age < 2
 }
 
 export const zoomedInSelector = (s: ReactFlowState) => s.transform[2] >= 1
@@ -44,7 +35,8 @@ export function LiveLines({ entry }: { entry: ActivityEntry }) {
 
 /**
  * Output port of an engine node with inspector decorations:
- * - the handle breathes while values flow, with the rate shown at >= 100% zoom
+ * - the handle breathes while values flow (the engine decides when a port
+ *   stopped), with the rate shown at >= 100% zoom
  * - the tooltip adds live type, rate and min/max/mean
  * - clicking the label opens a peek popover
  * Without an inspector (engine 1.0, or turned off) it is a plain handle.
@@ -60,16 +52,14 @@ export const ActivityOutputHandle = memo(function ActivityOutputHandle({
   handleColor: string
   tooltip: string
 }) {
-  const inspector = useInspector()
-  const { supported, enabled } = useInspectorState()
-  const live = Boolean(inspector && supported && enabled)
+  const live = useInspectorLive()
   const portRef = useMemo<InspectorPortRef>(() => ({ node: nodeId, dir: "out", port }), [nodeId, port])
   const entry = usePortActivity(live ? portRef : null)
   const zoomedIn = useStore(zoomedInSelector)
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
 
   const flowing = live && isFlowing(entry)
-  const glow = flowing ? alpha(handleColor, 0.45) : undefined
+  const glow = live ? alpha(handleColor, 0.45) : undefined
   // A fixed-width slot while monitoring at >= 100% zoom, so nodes do not
   // change width when values start or stop flowing.
   const badge =
@@ -118,6 +108,7 @@ export const ActivityOutputHandle = memo(function ActivityOutputHandle({
           label={port}
           handleColor={handleColor}
           glow={glow}
+          flowing={flowing}
           badge={badge}
           onLabelClick={live ? onLabelClick : undefined}
         />

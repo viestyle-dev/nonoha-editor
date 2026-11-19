@@ -95,9 +95,13 @@ import type {
 } from "./types"
 import { makeNodePrototypes } from "./node-prototypes"
 import { buildGraph, refreshGraph } from "./graph-loader"
+import { generateWaypointId, waypointNode } from "@/src/nodes/editor-nodes/waypoint-node"
+import { EDGE_Z_INDEX } from "@/src/api/graph-api"
+import { EdgeConnectionLine } from "@/src/components/basic-node-edge"
+import { BreathPauser } from "@/src/components/breath"
+import { EdgeFocus } from "@/src/components/edge-focus"
 import {
   parseEdgeEndpoint,
-  generateWaypointId,
   WAYPOINT_MERGE_RADIUS,
   cleanupWaypointFromEdges,
   handleEdgesDelete,
@@ -115,7 +119,7 @@ import {
 import {
   InspectorProvider,
   useInspector,
-  useInspectorState,
+  useInspectorLive,
   type EdgeEndpoints,
   type PinRequest,
 } from "@/src/inspector/inspector-store"
@@ -200,8 +204,7 @@ function InspectorBridge({
   availableRef: { current: boolean }
 }) {
   const inspector = useInspector()
-  const { supported, enabled } = useInspectorState()
-  availableRef.current = Boolean(supported && enabled)
+  availableRef.current = useInspectorLive()
   useEffect(() => {
     if (!inspector) return
     inspector.pinHandler = onPin
@@ -443,6 +446,7 @@ function PageInner() {
           {
             id: edgeId,
             type: "BasicNodeEdge",
+            zIndex: EDGE_Z_INDEX,
             ...connection,
             data: {
               source: { type: sourceType },
@@ -490,6 +494,7 @@ function PageInner() {
             {
               id: edgeId,
               type: "BasicNodeEdge",
+              zIndex: EDGE_Z_INDEX,
               ...connection,
               data: {
                 source: {
@@ -546,6 +551,7 @@ function PageInner() {
               id: edgeId,
               ...connection,
               type: "BasicNodeEdge",
+              zIndex: EDGE_Z_INDEX,
               data: {
                 source: {
                   type: "input",
@@ -580,6 +586,7 @@ function PageInner() {
               id: edgeId,
               ...connection,
               type: "BasicNodeEdge",
+              zIndex: EDGE_Z_INDEX,
               data: {
                 source: {
                   type: "node",
@@ -616,6 +623,7 @@ function PageInner() {
               id: edgeId,
               ...connection,
               type: "BasicNodeEdge",
+              zIndex: EDGE_Z_INDEX,
               data: {
                 source: {
                   type: "node",
@@ -873,6 +881,7 @@ function PageInner() {
               sourceHandle: connection.sourceHandleId,
               target: connection.portNodeId,
               type: "BasicNodeEdge",
+              zIndex: EDGE_Z_INDEX,
               data: {
                 source: { type: "node" },
                 target: { type: "output" },
@@ -902,6 +911,7 @@ function PageInner() {
               target: connection.sourceNodeId,
               targetHandle: connection.sourceHandleId,
               type: "BasicNodeEdge",
+              zIndex: EDGE_Z_INDEX,
               data: {
                 source: { type: "input" },
                 target: { type: "node" },
@@ -1894,19 +1904,7 @@ function PageInner() {
                 selected: true,
               }
             } else if (nodeType === "waypoint") {
-              // zIndex must match graph-loader.ts:255 and basic-node-edge.tsx:218
-              // (both = 2000) so the waypoint renders above edges and stays
-              // grabbable. Using a lower value (e.g. -1) puts the waypoint
-              // underneath the edge curve.
-              nodeObject = {
-                id: createdNode.name,
-                data: {},
-                position: position,
-                type: "WaypointNode",
-                parentId: "$graph",
-                zIndex: 2000,
-                selected: true,
-              }
+              nodeObject = waypointNode(createdNode.name, position, true)
             } else {
               // Fallback
               nodeObject = {
@@ -1963,6 +1961,7 @@ function PageInner() {
               source: reactFlowSource,
               target: reactFlowTarget,
               type: "BasicNodeEdge",
+              zIndex: EDGE_Z_INDEX,
               data: {
                 source: {
                   type: edgeResult.sourceNodeType as
@@ -2249,9 +2248,12 @@ function PageInner() {
             onInit={(instance: ReactFlowInstance) => {
               reactFlowInstanceRef.current = instance
             }}
+            connectionLineComponent={EdgeConnectionLine}
           >
             <Background gap={20} variant={BackgroundVariant.Dots} />
             <Controls />
+            <BreathPauser />
+            <EdgeFocus />
             <ViewportPortal>
               <OriginMarker />
             </ViewportPortal>

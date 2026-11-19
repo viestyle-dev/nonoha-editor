@@ -7,14 +7,13 @@ import { useThemeStore } from "@/src/stores/theme-store"
 import { hexFromArgb } from "@material/material-color-utilities"
 import { EditableTypography } from "@/src/components/editable-typography"
 import { getNodeType } from "@/src/stores/node-flow-store"
-import {
-  getHctFromPortValueType,
-  useNodeFlowColorsStore,
-} from "@/src/stores/node-flow-colors-store"
+import { useNodeFlowColorsStore } from "@/src/stores/node-flow-colors-store"
+import { getHctFromPortValueType } from "@/src/lib/graph/port-colors"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
-import { flowingGlow } from "@/src/components/node-handle"
-import { useInspectorState, usePortActivity } from "@/src/inspector/inspector-store"
-import { formatHz, isFlowing, LiveLines, zoomedInSelector } from "@/src/inspector/activity-output-handle"
+import { portRing, useBreatheDelay } from "@/src/components/breath"
+import { isFlowing, useInspectorLive, usePortActivity } from "@/src/inspector/inspector-store"
+import { LiveLines, zoomedInSelector } from "@/src/inspector/activity-output-handle"
+import { formatHz } from "@/src/inspector/value-renderers"
 import { PeekPopover } from "@/src/inspector/peek-popover"
 
 export type BasicPortNode = Node<{
@@ -49,8 +48,7 @@ export const BasicPortNode = memo((props: NodeProps<BasicPortNode>) => {
 
   // Inspector: the graph's own port (node "") breathes while values flow;
   // the type label shows live statistics and opens a peek on click.
-  const { supported, enabled } = useInspectorState()
-  const live = Boolean(supported && enabled) && (nodeType === "input" || nodeType === "output")
+  const live = useInspectorLive() && (nodeType === "input" || nodeType === "output")
   const portName = props.data.port.name
   const portRef = useMemo<InspectorPortRef>(
     () => ({ node: "", dir: nodeType === "input" ? "in" : "out", port: portName }),
@@ -58,6 +56,7 @@ export const BasicPortNode = memo((props: NodeProps<BasicPortNode>) => {
   )
   const entry = usePortActivity(live ? portRef : null)
   const flowing = live && isFlowing(entry)
+  const breatheDelay = useBreatheDelay(flowing)
   const zoomedIn = useStore(zoomedInSelector)
   const [peekAnchor, setPeekAnchor] = useState<HTMLElement | null>(null)
   const openPeek = useCallback((event: MouseEvent<HTMLElement>) => {
@@ -78,11 +77,17 @@ export const BasicPortNode = memo((props: NodeProps<BasicPortNode>) => {
           color: colors.onSurface,
           outlineOffset: "4px",
         }),
-        flowing && flowingGlow,
+        live && portRing,
       ]}
+      data-flowing={flowing ? "" : undefined}
       style={{
         outline: props.selected ? `1px solid ${colors.tertiary}` : "none",
-        ...(flowing ? ({ "--port-glow": alpha(dataTypeColor, 0.45) } as Record<string, string>) : null),
+        ...(live
+          ? ({ "--port-glow": alpha(dataTypeColor, 0.45), "--breathe-delay": breatheDelay } as Record<
+              string,
+              string | undefined
+            >)
+          : null),
       }}
     >
       <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />
@@ -169,11 +174,18 @@ export const BasicPortNode = memo((props: NodeProps<BasicPortNode>) => {
           {nodeType == "input" && "IN"}
           {nodeType == "output" && "OUT"}
         </Typography>
-        {flowing && zoomedIn && (
+        {live && zoomedIn && (
+          // Holds its line while values stop and start, so "OUT" does not move
           <Typography
-            css={css({ fontSize: 10, lineHeight: "12px", color: colors.onSurfaceVariant, fontVariantNumeric: "tabular-nums" })}
+            css={css({
+              fontSize: 10,
+              lineHeight: "12px",
+              height: 12,
+              color: colors.onSurfaceVariant,
+              fontVariantNumeric: "tabular-nums",
+            })}
           >
-            {formatHz(entry!.hz)} Hz
+            {flowing && `${formatHz(entry!.hz)} Hz`}
           </Typography>
         )}
 

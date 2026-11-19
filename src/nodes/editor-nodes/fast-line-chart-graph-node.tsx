@@ -5,8 +5,8 @@ import {
   Node,
   NodeProps,
   useReactFlow,
-  useViewport,
 } from "@xyflow/react"
+import { useZoom } from "@/src/hooks/use-zoom"
 import {
   alpha,
   Button,
@@ -280,7 +280,7 @@ export type FastLineChartGraphNode = Node<{
 export const FastLineChartGraphNode = memo(
   (props: NodeProps<FastLineChartGraphNode>) => {
     const { setNodes } = useReactFlow()
-    const { zoom: viewportZoom } = useViewport()
+    const viewportZoom = useZoom()
     const [{ colors }] = useThemeStore()
 
     const graphRef = useRef<FastLineChartGraphHandle>(null)

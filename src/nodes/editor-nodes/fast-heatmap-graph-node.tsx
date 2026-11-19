@@ -5,8 +5,8 @@ import {
   Node,
   NodeProps,
   useReactFlow,
-  useViewport,
 } from "@xyflow/react"
+import { useZoom } from "@/src/hooks/use-zoom"
 import {
   alpha,
   Button,
@@ -407,7 +407,7 @@ export type FastHeatmapGraphNode = Node<{
 export const FastHeatmapGraphNode = memo(
   (props: NodeProps<FastHeatmapGraphNode>) => {
     const { setNodes } = useReactFlow()
-    const { zoom: viewportZoom } = useViewport()
+    const viewportZoom = useZoom()
     const [{ colors }] = useThemeStore()
 
     const graphRef = useRef<FastHeatmapGraphHandle>(null)

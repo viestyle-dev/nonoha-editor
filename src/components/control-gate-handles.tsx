@@ -4,10 +4,8 @@ import { Tooltip } from "@mui/material"
 import { hexFromArgb } from "@material/material-color-utilities"
 
 import { NodeHandleLeft } from "@/src/components/node-handle"
-import {
-  getHctFromPortValueType,
-  useNodeFlowColorsStore,
-} from "@/src/stores/node-flow-colors-store"
+import { useNodeFlowColorsStore } from "@/src/stores/node-flow-colors-store"
+import { getHctFromPortValueType } from "@/src/lib/graph/port-colors"
 
 const REC_TIP =
   "Recording gate [bool]\nRecords only while the connected signal is true.\nNumeric signals: 0 = false, non-zero = true.\nThe AUTO/MANUAL toggle (top right) can suspend signal control."

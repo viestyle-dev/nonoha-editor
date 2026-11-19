@@ -39,6 +39,8 @@ import {
 
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { useThemeStore } from "@/src/stores/theme-store"
+import { useNodeFlowColorsStore } from "@/src/stores/node-flow-colors-store"
+import { inputHandleColor } from "@/src/lib/graph/port-colors"
 import { NodeHandleLeft } from "@/src/components/node-handle"
 import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
@@ -71,6 +73,8 @@ const ViewInput = memo(function ViewInput({
   hostReady: boolean
 }) {
   const name = input.name
+  const [{ colors }] = useThemeStore()
+  const [{ pallet }] = useNodeFlowColorsStore()
   // What the view declares it needs: sampling for dashed edges, and the
   // current value first for "latest" inputs on solid edges.
   const options = useMemo(() => watchOptionsFor(input), [input])
@@ -79,8 +83,11 @@ const ViewInput = memo(function ViewInput({
     enabled: hostReady,
   })
   return (
-    <Tooltip title={`${input.description ?? name}\n[${input.accepts.join(", ")}]`} placement="left">
-      <NodeHandleLeft id={name} label={name} />
+    <Tooltip
+      title={<span style={{ whiteSpace: "pre-line" }}>{`${input.description ?? name}\n[${input.accepts.join(", ")}]`}</span>}
+      placement="left"
+    >
+      <NodeHandleLeft id={name} label={name} handleColor={inputHandleColor(input.accepts, pallet, colors.outline)} />
     </Tooltip>
   )
 })
@@ -319,7 +326,9 @@ export const PluginViewNode = memo((props: NodeProps<PluginViewNode>) => {
           {entry?.title ?? "View"} · {origin}
         </Typography>
       </div>
-      <div css={css({ display: "flex", flexGrow: 1, minHeight: 0, gap: 4, padding: "4px 0" })}>
+      {/* Inputs beside the view. The row clips the handles at the node's edge
+          into half discs, as on the other nodes. */}
+      <div css={css({ display: "flex", flexGrow: 1, minHeight: 0, gap: 4, padding: "4px 0", overflow: "hidden" })}>
         <div css={css({ display: "flex", flexDirection: "column", gap: 4, justifyContent: "center" })}>
           {(entry?.inputs ?? []).map(input => (
             <ViewInput

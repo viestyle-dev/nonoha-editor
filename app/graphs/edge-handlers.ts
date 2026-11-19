@@ -50,11 +50,6 @@ export const parseEdgeEndpoint = (
   return { nodeName, portHandle }
 }
 
-/** Generate a unique waypoint node ID. */
-export function generateWaypointId(): string {
-  return `$wp:${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
-}
-
 /** Merge radius in pixels for combining nearby waypoints. */
 export const WAYPOINT_MERGE_RADIUS = 20
 

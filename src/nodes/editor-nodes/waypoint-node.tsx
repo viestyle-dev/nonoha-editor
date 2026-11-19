@@ -1,26 +1,51 @@
 "use client"
-import { Node, NodeProps, useStore } from "@xyflow/react"
+import { Node, NodeProps, XYPosition } from "@xyflow/react"
 import { memo, useCallback, useState } from "react"
 import { css } from "@emotion/react"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { useGraphSessionStore } from "@/src/stores/graph-session-store"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { WaypointContextMenu } from "@/src/components/waypoint-context-menu"
+import { WAYPOINT_SIZE } from "@/src/lib/graph/edge-path"
+import { useWaypointUse } from "@/src/hooks/use-edge-drawing"
 
 export type WaypointNode = Node<Record<string, never>>
 
-/** Waypoint visual size in pixels. Used for centering edge paths. */
-export const WAYPOINT_SIZE = 24
+/** A unique waypoint node id. */
+export function generateWaypointId(): string {
+  return `$wp:${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
+}
+
+/** Above the edges, so a waypoint stays grabbable. */
+export const WAYPOINT_Z_INDEX = 2000
+
+/** A waypoint at `position`: its center, relative to the $graph group (snapped to the grid like a node). */
+export function waypointNode(id: string, position: XYPosition, selected?: boolean): WaypointNode {
+  return {
+    id,
+    type: "WaypointNode",
+    position,
+    origin: [0.5, 0.5],
+    parentId: "$graph",
+    data: {},
+    zIndex: WAYPOINT_Z_INDEX,
+    ...(selected ? { selected } : null),
+  }
+}
 
 const containerStyle = css({
   width: WAYPOINT_SIZE,
   height: WAYPOINT_SIZE,
+  boxSizing: "border-box",
   borderRadius: "50%",
+  borderWidth: 1,
+  borderStyle: "solid",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  fontSize: 11,
+  fontSize: 10,
   fontWeight: 500,
+  fontVariantNumeric: "tabular-nums",
   cursor: "grab",
   userSelect: "none",
   outlineOffset: "4px",
@@ -33,22 +58,10 @@ export const WaypointNode = memo(function WaypointNode(
   const [{ editorModelUpdater }] = useGraphSessionStore()
   const editorModelUrl = editorModelUpdater?.editorModelUrl
 
-  // Count edges passing through this waypoint (reactive)
-  const edgeCount = useStore(
-    useCallback(
-      state => {
-        let count = 0
-        state.edgeLookup.forEach(edge => {
-          const wpIds = (edge.data as Record<string, unknown>)?.waypointIds as
-            | string[]
-            | undefined
-          if (wpIds?.includes(props.id)) count++
-        })
-        return count
-      },
-      [props.id],
-    ),
-  )
+  // The lines drawn through this waypoint. One that only references and
+  // displays pass (not drawn as lines) is not shown; it comes back with them.
+  const [edgeCount, lineCount] = useWaypointUse(props.id).split("|").map(Number)
+  const hidden = edgeCount > 0 && lineCount === 0
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -64,17 +77,19 @@ export const WaypointNode = memo(function WaypointNode(
 
   return (
     <>
+      {/* A waypoint one edge bends through recedes; one that bundles several stands out */}
       <div
         css={containerStyle}
         style={{
-          backgroundColor: colors.surfaceContainerHigh,
-          border: `2px solid ${colors.outlineVariant}`,
+          backgroundColor: lineCount > 1 ? colors.surfaceContainerHighest : colors.surfaceContainer,
+          borderColor: lineCount > 1 ? colors.outline : colors.outlineVariant,
           outline: props.selected ? `1px solid ${colors.tertiary}` : "none",
-          color: colors.onSurface,
+          color: lineCount > 1 ? colors.onSurface : colors.onSurfaceVariant,
+          ...(hidden ? { visibility: "hidden", pointerEvents: "none" } : null),
         }}
         onContextMenu={handleContextMenu}
       >
-        {edgeCount > 0 ? edgeCount : ""}
+        {lineCount > 0 ? lineCount : ""}
       </div>
 
       <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />

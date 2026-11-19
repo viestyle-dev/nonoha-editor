@@ -4,10 +4,8 @@ import { Add } from "@mui/icons-material"
 import { css } from "@emotion/react"
 import { hexFromArgb } from "@material/material-color-utilities"
 import { useThemeStore } from "@/src/stores/theme-store"
-import {
-  getHctFromPortValueType,
-  useNodeFlowColorsStore,
-} from "@/src/stores/node-flow-colors-store"
+import { useNodeFlowColorsStore } from "@/src/stores/node-flow-colors-store"
+import { getHctFromPortValueType } from "@/src/lib/graph/port-colors"
 import type { UnifiedNodeEntry, CatalogPortInfo, CatalogPropertyInfo } from "./types"
 
 interface NodeDetailPanelProps {

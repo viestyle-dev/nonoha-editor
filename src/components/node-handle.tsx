@@ -1,93 +1,70 @@
-import { css, keyframes } from "@emotion/react"
+import { css } from "@emotion/react"
 import { Typography } from "@mui/material"
-import { Handle, Position, useHandleConnections } from "@xyflow/react"
+import { Handle, Position } from "@xyflow/react"
 import { forwardRef, MouseEvent, ReactNode } from "react"
 
-export interface NodeHandleLeftProps {
-  id?: string
-  label?: string
-  handleColor?: string
-  size?: number
-}
+import { portRing, useBreatheDelay } from "@/src/components/breath"
+import { useThemeStore } from "@/src/stores/theme-store"
 
-export const NodeHandleLeft = forwardRef<HTMLDivElement, NodeHandleLeftProps>(
-  function NodeHandleLeft(props, ref) {
-    const connections = useHandleConnections({ type: "target", id: props.id })
-    const handleSize = props.size ?? 16
-    return (
-      <div
-        ref={ref}
-        {...props}
-        css={css({
-          display: "flex",
-          flexDirection: "row",
-          position: "relative",
-          alignItems: "center",
-          minWidth: 8,
-          height: handleSize,
-        })}
-      >
-        <Handle
-          style={{
-            width: `${handleSize}px`,
-            height: `${handleSize}px`,
-            background: props.handleColor,
-          }}
-          id={props.id}
-          type="target"
-          position={Position.Left}
-        />
-        {props.label && (
-          <Typography sx={{ pl: 1 }} variant="caption">
-            {props.label}
-          </Typography>
-        )}
-      </div>
-    )
-  }
-)
+/** Height of one handle row, inputs and outputs alike. */
+const ROW_HEIGHT = 20
+const HANDLE_SIZE = 16
 
-// Soft ring that breathes while values flow through the port. The ring is a
-// pseudo-element whose opacity animates: the compositor runs opacity (and
-// transform) animations without the main thread. Animating box-shadow
-// recalculated styles and repainted every flowing port on every frame (with
-// a busy graph open, half of Chrome's CPU).
-const breathe = keyframes`
-  0%, 100% { opacity: 0.35; }
-  50% { opacity: 1; }
-`
-
-/**
- * Breathing ring for anything carrying `--port-glow` (handles, port nodes).
- * The element must be positioned (handles and port nodes are).
- */
-export const flowingGlow = css({
-  "&::after": {
-    content: '""',
-    position: "absolute",
-    inset: 0,
-    borderRadius: "inherit",
-    boxShadow: "0 0 0 4px var(--port-glow)",
-    pointerEvents: "none",
-    animation: `${breathe} 1.6s ease-in-out infinite`,
-  },
-  "@media (prefers-reduced-motion: reduce)": {
-    "&::after": { animation: "none", opacity: 0.75 },
-  },
+const row = css({
+  display: "flex",
+  flexDirection: "row",
+  position: "relative",
+  alignItems: "center",
+  minWidth: 8,
+  height: ROW_HEIGHT,
 })
-
+const leftLabel = css({ paddingLeft: 8, whiteSpace: "nowrap" })
+const rightLabel = css({ paddingRight: 8, whiteSpace: "nowrap" })
 const clickableLabel = css({
   cursor: "pointer",
   borderRadius: 4,
   "&:hover": { textDecoration: "underline dotted" },
 })
 
+export interface NodeHandleLeftProps {
+  id?: string
+  label?: string
+  /** The accepted type's color; the theme's neutral color when it accepts several or any. */
+  handleColor?: string
+  /** Handle size in px (16; property ports use a smaller one). */
+  size?: number
+}
+
+export const NodeHandleLeft = forwardRef<HTMLDivElement, NodeHandleLeftProps>(
+  // `rest`: what a wrapping Tooltip passes (its listeners and aria attributes)
+  function NodeHandleLeft({ id, label, handleColor, size = HANDLE_SIZE, ...rest }, ref) {
+    const [{ colors }] = useThemeStore()
+    return (
+      <div {...rest} ref={ref} css={row}>
+        <Handle
+          style={{ width: size, height: size, background: handleColor ?? colors.outline }}
+          id={id}
+          type="target"
+          position={Position.Left}
+        />
+        {label && (
+          <Typography variant="caption" css={leftLabel}>
+            {label}
+          </Typography>
+        )}
+      </div>
+    )
+  },
+)
+
 export interface NodeHandleRightProps {
   id?: string
   label: string
   handleColor?: string
-  /** Glow color while values flow (inspector activity); undefined = no glow. */
+  /** Ring color while the inspector reports this port's activity; undefined = no ring. */
   glow?: string
+  /** Values flow through the port now: the ring breathes. */
+  flowing?: boolean
   /** Shown before the label (e.g. a rate badge). */
   badge?: ReactNode
   /** Makes the label clickable (e.g. to peek at the value). */
@@ -95,41 +72,36 @@ export interface NodeHandleRightProps {
 }
 
 export const NodeHandleRight = forwardRef<HTMLDivElement, NodeHandleRightProps>(
-  function NodeHandleRight({ id, label, handleColor, glow, badge, onLabelClick, ...rest }, ref) {
+  // `rest`: what a wrapping Tooltip passes (its listeners and aria attributes)
+  function NodeHandleRight({ id, label, handleColor, glow, flowing = false, badge, onLabelClick, ...rest }, ref) {
+    const breatheDelay = useBreatheDelay(flowing)
     return (
-      <div
-        {...rest}
-        ref={ref}
-        css={css`
-          display: flex;
-          flex-direction: row;
-          position: relative;
-          align-items: center;
-        `}
-      >
+      <div {...rest} ref={ref} css={row}>
         {badge}
         <Typography
-          sx={{ pr: 1 }}
           variant="caption"
           className={onLabelClick ? "nodrag" : undefined}
-          css={onLabelClick ? clickableLabel : undefined}
+          css={[rightLabel, onLabelClick && clickableLabel]}
           onClick={onLabelClick}
         >
           {label}
         </Typography>
         <Handle
           style={{
-            width: "16px",
-            height: "16px",
+            width: HANDLE_SIZE,
+            height: HANDLE_SIZE,
             background: handleColor,
-            ...(glow ? ({ "--port-glow": glow } as Record<string, string>) : null),
+            ...(glow
+              ? ({ "--port-glow": glow, "--breathe-delay": breatheDelay } as Record<string, string | undefined>)
+              : null),
           }}
-          css={glow ? flowingGlow : undefined}
+          css={glow ? portRing : undefined}
+          data-flowing={glow && flowing ? "" : undefined}
           id={id}
           type="source"
           position={Position.Right}
         />
       </div>
     )
-  }
+  },
 )

@@ -10,13 +10,10 @@ import {
 import { useThemeStore } from "./theme-store"
 import { DynamicScheme, Hct } from "@material/material-color-utilities"
 import { nameToPortDataType } from "nonoha-client-js"
+import type { PortPallet } from "@/src/lib/graph/port-colors"
 
 interface NodeFlowColorsState {
-  pallet: {
-    dataTypes: {
-      [key: string]: Hct
-    }
-  }
+  pallet: PortPallet
 }
 
 export const NodeFlowColorsStateContext = createContext<NodeFlowColorsState>({
@@ -72,18 +69,6 @@ function buildPallet(scheme: DynamicScheme) {
   return {
     dataTypes: dataTypesPallet,
   }
-}
-
-export function getHctFromPortValueType(
-  type: string,
-  dataTypesPallet: NodeFlowColorsState["pallet"]
-) {
-  const baseTypeName = type.split("[")[0]
-  const baseType = nameToPortDataType[baseTypeName]
-  if (baseType === undefined) {
-    throw new Error(`Unknown data type: ${type}`)
-  }
-  return dataTypesPallet.dataTypes[baseTypeName]
 }
 
 export const NodeFlowColorsStoreProvider = ({
