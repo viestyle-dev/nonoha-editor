@@ -46,7 +46,7 @@ function sameNodeData(a: readonly Node[], b: readonly Node[]): boolean {
   return true
 }
 
-/** The drawings and a signature of them (equal signatures: nothing to tell). */
+/** The drawings and a signature of all of them (equal signatures: nothing to tell). */
 function compute(state: ReactFlowState): [Drawings, string] {
   const base = edgeDrawings(state.edges, drawAsOf(state))
   const use = new Map<string, [number, number]>()
@@ -64,7 +64,10 @@ function compute(state: ReactFlowState): [Drawings, string] {
   }
   base.outputs.forEach((marks, key) => (signature += `${key}:${marks.references}|${marks.displays}|${marks.markEdge};`))
   const waypoints = new Map<string, string>()
-  use.forEach(([all, lines], id) => waypoints.set(id, `${all}|${lines}`))
+  use.forEach(([all, lines], id) => {
+    waypoints.set(id, `${all}|${lines}`)
+    signature += `${id}:${all}|${lines};`
+  })
   return [{ ...base, waypoints }, signature]
 }
 

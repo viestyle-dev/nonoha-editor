@@ -23,10 +23,16 @@ export interface ClipboardNodeData {
     x: number
     y: number
   }
+  /** Engine node: the output previewed inside it. */
+  preview?: string
+  /** Outputs drawn against the rule (edge-drawing.ts): output name ("" for a graph port) -> how. */
+  drawAs?: Record<string, "line" | "reference">
   editorData?: {
     width?: number
     height?: number
     data?: Record<string, unknown>
+    /** The node's title, when it has one of its own (not its id). */
+    label?: string
   }
   portData?: {
     portName: string

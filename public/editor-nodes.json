@@ -4,6 +4,7 @@
   "settingsFile": "graphs/<graph>.vng/editors/nonoha-editor/models/settings.json",
   "nodeId": "$editor:<type>_<unique suffix>, e.g. $editor:FastTimeSeriesGraphNode_a1b2c3",
   "layout": "settings.nodes[<id>] = {type, x, y, width?, height?, label?, data: {<settings>}}; label is the title shown (defaults to the id). Keep editor nodes outside the $graph frame (settings.nodes.$graph = {width, height}).",
+  "grid": "Positions are on a 20 px grid: x and y (a node's top-left) are multiples of 20. Every node has its ports in 20 px rows, the first one centered 50 px below the node's top (30 px on a graph port node): nodes at the same y have their rows in line, and ports of the same row join with a straight line. A waypoint ($wp:<id>) stores its center: x and y are 10 plus a multiple of 20, which is a row's center. Engine nodes, graph ports and waypoints are relative to the $graph frame (itself on the grid); editor nodes are absolute.",
   "connections": {
     "fromOutputPort": "Input handles connect from $output:<port> nodes of the graph. Stored in settings.editor_edges: key '<source>-<target>:<targetHandle>', value {source, sourceHandle: null, target, targetHandle}. Values arrive complete (same values the app sees).",
     "fromEngineNode": "With engines that report inspector capabilities (1.1+), input handles can also connect straight from an engine node output (source '<Node>', sourceHandle '<port>'). Drawn dashed; values are sampled by the inspector and can miss updates.",

@@ -14,6 +14,9 @@ import { portRing } from "@/src/components/port-ring"
 import { useInspectorLive, usePortFlowing, usePortRateText } from "@/src/inspector/inspector-store"
 import { LiveLines, zoomedInSelector } from "@/src/inspector/activity-output-handle"
 import { PeekPopover } from "@/src/inspector/peek-popover"
+import { ROW } from "@/src/lib/graph/grid"
+
+const PORT_SIZE = 3 * ROW
 
 export type BasicPortNode = Node<{
   label: string
@@ -68,9 +71,10 @@ export const BasicPortNode = memo((props: NodeProps<BasicPortNode>) => {
     <Paper
       css={[
         css({
-          borderRadius: 32,
-          width: 64,
-          height: 64,
+          // Three rows across: its handles are in the middle of the second (grid.ts)
+          borderRadius: PORT_SIZE / 2,
+          width: PORT_SIZE,
+          height: PORT_SIZE,
           position: "relative",
           background: colors.surfaceContainerHighest,
           color: colors.onSurface,

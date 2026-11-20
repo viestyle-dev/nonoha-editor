@@ -22,9 +22,9 @@ import { useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { NodeHandleLeft } from "@/src/components/node-handle"
-import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { SignalLamp } from "@/src/components/signal-lamp"
+import { EditorNodeHeader } from "@/src/components/node-header"
 
 function valueToString(value: PortValue): string {
   switch (value.dataType) {
@@ -247,7 +247,6 @@ export const ValuesLogDisplayNode = memo(
   (props: NodeProps<ValuesLogDisplayNode>) => {
     const { setNodes } = useReactFlow()
     const [{ colors }] = useThemeStore()
-    const [titleEditing, setTitleEditing] = useState(false)
     const [detailsOpen, setDetailsOpen] = useState(false)
 
     const editorModelUpdater = props.data.editorModelUpdater
@@ -353,24 +352,7 @@ export const ValuesLogDisplayNode = memo(
           </NodeResizeControl>
         )}
         <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />
-        <div
-          className={titleEditing ? "" : "drag-handle"}
-          css={css({
-            width: "100%",
-            padding: 8,
-            flexShrink: 0,
-          })}
-        >
-          <EditableTypography
-            editing={titleEditing}
-            onEditingChange={editing => {
-              setTitleEditing(editing)
-            }}
-            text={props.data.label}
-            fontSize={14}
-          />
-        </div>
-        <Divider />
+        <EditorNodeHeader label={props.data.label} />
         <div
           css={css({
             display: "flex",

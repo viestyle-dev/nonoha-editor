@@ -7,7 +7,6 @@ import {
 } from "@xyflow/react"
 import {
   Button,
-  Divider,
   Paper,
   ToggleButton,
   ToggleButtonGroup,
@@ -25,8 +24,8 @@ import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { NodeHandleRight } from "@/src/components/node-handle"
-import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
+import { EditorNodeHeader } from "@/src/components/node-header"
 
 export type CameraCaptureNode = Node<{
   label: string
@@ -165,15 +164,7 @@ export const CameraCaptureNode = memo((props: NodeProps<CameraCaptureNode>) => {
       }}
     >
       <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />
-      <div className="drag-handle" css={css({ width: "100%", padding: 8 })}>
-        <EditableTypography
-          editing={false}
-          onEditingChange={() => {}}
-          text={props.data.label || "Camera Capture"}
-          fontSize={16}
-        />
-      </div>
-      <Divider />
+      <EditorNodeHeader label={props.data.label || "Camera Capture"} />
       <div
         css={css({
           display: "flex",

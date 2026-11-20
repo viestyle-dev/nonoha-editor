@@ -14,6 +14,8 @@ import {
 import { css } from "@emotion/react"
 
 import { NodeHandleLeft } from "@/src/components/node-handle"
+import { TITLE_BAR_HEIGHT, TITLE_GAP } from "@/src/components/node-header"
+import { ROW } from "@/src/lib/graph/grid"
 import { ActivityOutputHandle } from "@/src/inspector/activity-output-handle"
 import { NodePreview, NodePreviewToggle } from "@/src/inspector/node-preview"
 import { useGraphSessionStore } from "@/src/stores/graph-session-store"
@@ -118,7 +120,7 @@ function PropertyRow({
 
   return (
     <div
-      css={css({ display: visible ? "flex" : "none", alignItems: "center", minHeight: 24 })}
+      css={css({ display: visible ? "flex" : "none", alignItems: "center", height: ROW })}
     >
       {groupMode && portName && (
         <Checkbox
@@ -298,6 +300,7 @@ export const BasicEngineNode = memo((props: NodeProps<BasicEngineNode>) => {
                     flexDirection: "row",
                     fontSize: 12,
                     alignItems: "center",
+                    height: ROW,
                   })}
                 >
                   <Tooltip title={value.type} placement="right">
@@ -324,7 +327,7 @@ export const BasicEngineNode = memo((props: NodeProps<BasicEngineNode>) => {
                   <Checkbox
                     size="small"
                     css={css({
-                      padding: 1,
+                      padding: 0,
                     })}
                     checked={value.dispatch_flag}
                     onChange={e => {
@@ -404,6 +407,7 @@ export const BasicEngineNode = memo((props: NodeProps<BasicEngineNode>) => {
                     justifyContent: "flex-end",
                     fontSize: 12,
                     alignItems: "center",
+                    height: ROW,
                   })}
                 >
                   <div
@@ -586,18 +590,26 @@ export const BasicEngineNode = memo((props: NodeProps<BasicEngineNode>) => {
           <div
             key={`group:${groupKey}`}
             css={css({
-              borderLeft: `2px solid ${colors.outlineVariant}`,
               marginLeft: -4,
-              paddingLeft: 8,
-              marginTop: 2,
-              marginBottom: 2,
+              paddingLeft: 10,
               position: "relative",
+              // The group's line: shorter than the rows, so two groups in a row
+              // read as two, and it takes no height (the rows stay on the row lines)
+              "&::before": {
+                content: '""',
+                position: "absolute",
+                left: 0,
+                top: 2,
+                bottom: 2,
+                width: 2,
+                background: colors.outlineVariant,
+              },
             })}
           >
             {detailsOpen && (
               <IconButton
                 size="small"
-                css={css({ position: "absolute", top: -4, left: -14, padding: 0, fontSize: 12 })}
+                css={css({ position: "absolute", top: -4, left: -12, padding: 0, fontSize: 12 })}
                 onClick={() => handleUngroup(group)}
               >
                 <LinkOff fontSize="inherit" />
@@ -762,7 +774,7 @@ export const BasicEngineNode = memo((props: NodeProps<BasicEngineNode>) => {
           className={titleEditing ? "" : "drag-handle"}
           css={css({
             position: "relative",
-            height: 32,
+            height: TITLE_BAR_HEIGHT,
             background: validationError
               ? alpha(colors.error, 0.15)
               : isDirty
@@ -796,7 +808,7 @@ export const BasicEngineNode = memo((props: NodeProps<BasicEngineNode>) => {
       <Divider />
       <div
         css={{
-          marginTop: 4,
+          marginTop: TITLE_GAP, // the port rows start on a row line (grid.ts)
           display: "flex",
           flexDirection: "row",
           justifyContent: "space-between",
@@ -833,7 +845,7 @@ export const BasicEngineNode = memo((props: NodeProps<BasicEngineNode>) => {
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            padding: "4px 8px",
+            padding: `${ROW / 2}px 8px`, // with its lines, whole rows: the property ports below stay on the row lines
           })}
         >
           <Typography
@@ -843,6 +855,7 @@ export const BasicEngineNode = memo((props: NodeProps<BasicEngineNode>) => {
               textAlign: "center",
               wordBreak: "break-all",
               width: "100%",
+              lineHeight: `${ROW}px`,
             })}
           >
             {String(properties["default"])}
@@ -874,7 +887,7 @@ export const BasicEngineNode = memo((props: NodeProps<BasicEngineNode>) => {
           >
             <Button
               css={css({
-                height: 20,
+                height: ROW,
                 color: colors.onSurfaceVariant,
                 justifyContent: "flex-start",
                 textTransform: "none",
@@ -887,7 +900,10 @@ export const BasicEngineNode = memo((props: NodeProps<BasicEngineNode>) => {
               onClick={() => setDetailsOpen(!detailsOpen)}
             >
               {detailsOpen ? <ExpandLess sx={{ fontSize: 14 }} /> : <ExpandMore sx={{ fontSize: 14 }} />}
-              Properties ({Object.keys(properties).length})
+              {/* One line in the row, cut short on a narrow node (it wrapped out of the row) */}
+              <span css={css({ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" })}>
+                Properties ({Object.keys(properties).length})
+              </span>
             </Button>
             {detailsOpen && (
               <>

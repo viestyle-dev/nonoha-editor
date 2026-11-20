@@ -27,6 +27,13 @@ describe("edgeDrawings", () => {
     expect(outputs.get(outputKey("P", "scale"))).toMatchObject({ references: 2, displays: 0 })
   })
 
+  it("draws an edge the engine refused as a line among references, and does not count it", () => {
+    const preset = [e("P", "scale", "C", "@scale"), { ...e("P", "scale", "E", "@scale"), data: { valid: false } }]
+    const { of, outputs } = edgeDrawings([...chain, ...preset], none)
+    expect(preset.map(x => of.get(x.id))).toEqual(["reference", "line"])
+    expect(outputs.get(outputKey("P", "scale"))).toMatchObject({ references: 1, displays: 0 })
+  })
+
   it("draws an output used at three or more layers as references, all of its edges", () => {
     const clock = [e("K", "time", "B", "time"), e("K", "time", "D", "time"), e("K", "time", "E", "time")]
     const split = [e("A", "out", "C", "x")] // a second consumer two layers on: still a line

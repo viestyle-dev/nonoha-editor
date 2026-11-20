@@ -15,14 +15,14 @@ import {
 import { SNAPSHOT_WATCH, useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { useThemeStore } from "@/src/stores/theme-store"
-import { Button, Collapse, Divider, FormControlLabel, Paper, Switch, TextField } from "@mui/material"
+import { Button, Collapse, FormControlLabel, Paper, Switch, TextField } from "@mui/material"
 import { NodeHandleLeft } from "@/src/components/node-handle"
 import dynamic from "next/dynamic"
 import { LineChartPlotData } from "@/src/components/line-chart-graph"
-import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { ExpandLess, ExpandMore } from "@mui/icons-material"
 import { enqueueSnackbar } from "notistack"
+import { EditorNodeHeader } from "@/src/components/node-header"
 const LineChartGraph = dynamic(
   () => import("@/src/components/line-chart-graph"),
   {
@@ -225,7 +225,6 @@ export const LineChartGraphNode = memo(
     const [isRecording, setIsRecording] = useState(false)
     const [detailsOpen, setDetailsOpen] = useState(false)
 
-    const [titleEditing, setTitleEditing] = useState(false)
 
     const editorModelUpdater = props.data.editorModelUpdater
 
@@ -330,24 +329,7 @@ export const LineChartGraphNode = memo(
         }}
       >
         <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />
-        <div
-          className={titleEditing ? "" : "drag-handle"}
-          css={css({
-            width: "100%",
-            padding: 8,
-            // backgroundColor: surfaceContainerHighColor,
-          })}
-        >
-          <EditableTypography
-            editing={titleEditing}
-            onEditingChange={editing => {
-              setTitleEditing(editing)
-            }}
-            text={props.data.label}
-            fontSize={14}
-          />
-        </div>
-        <Divider />
+        <EditorNodeHeader label={props.data.label} />
 
         <div
           css={css`

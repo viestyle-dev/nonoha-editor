@@ -30,9 +30,9 @@ import { useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { TimeSeriesPlotData } from "@/src/components/time-series-graph"
 import { useThemeStore } from "@/src/stores/theme-store"
-import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { ExpandLess, ExpandMore } from "@mui/icons-material"
+import { EditorNodeHeader } from "@/src/components/node-header"
 const TimeSeriesGraph = dynamic(
   () => import("@/src/components/time-series-graph"),
   {
@@ -451,7 +451,6 @@ export const TimeSeriesGraphNode = memo(
       return { min: yMin, max: yMax }
     }, [yMin, yMax])
 
-    const [titleEditing, setTitleEditing] = useState(false)
 
     return (
       <Paper
@@ -469,23 +468,7 @@ export const TimeSeriesGraphNode = memo(
         }}
       >
         <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />
-        <div
-          className={titleEditing ? "" : "drag-handle"}
-          css={css({
-            width: "100%",
-            padding: 8,
-          })}
-        >
-          <EditableTypography
-            editing={titleEditing}
-            onEditingChange={editing => {
-              setTitleEditing(editing)
-            }}
-            text={props.data.label}
-            fontSize={14}
-          />
-        </div>
-        <Divider />
+        <EditorNodeHeader label={props.data.label} />
         <div
           css={css`
             display: flex;

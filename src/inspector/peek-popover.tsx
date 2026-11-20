@@ -37,6 +37,11 @@ const KIND_LABELS: Record<ValueKind, string> = {
 /** Kinds that have a display node to pin to. */
 export const PINNABLE: ReadonlySet<ValueKind> = new Set<ValueKind>(["image", "bytes", "scalar", "vector", "series"])
 
+/** A display takes an engine node's output or a graph output: a graph input has nothing to pin to. */
+function isPinnablePort(ref: InspectorPortRef): boolean {
+  return ref.dir === "out"
+}
+
 export function colorOrderKey(graph: string, ref: InspectorPortRef) {
   return `nonoha-editor:color-order:${graph}:${ref.node}.${ref.dir}.${ref.port}`
 }
@@ -126,7 +131,7 @@ export function PeekPopover({
             <span>
               <IconButton
                 size="small"
-                disabled={!shownKind || !PINNABLE.has(shownKind) || !inspector?.pinHandler}
+                disabled={!shownKind || !PINNABLE.has(shownKind) || !isPinnablePort(portRef) || !inspector?.pinHandler}
                 onClick={pin}
               >
                 <PushPin fontSize="small" />

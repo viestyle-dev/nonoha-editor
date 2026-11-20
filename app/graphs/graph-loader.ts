@@ -307,7 +307,17 @@ export const buildGraph = async (
       }
     }
 
-    const allEdges = mergedEdges
+    // What is shown: the edges between two loaded nodes (a read-only graph
+    // loads no engine nodes, so their edges have no ends). A read-only graph
+    // also shows only the waypoints such an edge passes: the others would be
+    // circles without a line. An editable graph keeps every stored waypoint,
+    // so one that no edge passes any more can be seen and removed.
+    const loadedIds = new Set<string>()
+    for (const group of [nodes, inputNodes, outputNodes, editorNodes]) for (const node of group) loadedIds.add(node.id)
+    const allEdges = mergedEdges.filter(edge => loadedIds.has(edge.source) && loadedIds.has(edge.target))
+    const passed = new Set<string>()
+    for (const edge of allEdges) for (const id of edge.data?.waypointIds ?? []) passed.add(id)
+    const shownWaypoints = graphEditDisabled ? waypointNodes.filter(waypoint => passed.has(waypoint.id)) : waypointNodes
 
     return {
       nodes: [
@@ -316,7 +326,7 @@ export const buildGraph = async (
         ...inputNodes,
         ...outputNodes,
         ...editorNodes,
-        ...waypointNodes,
+        ...shownWaypoints,
       ],
       edges: allEdges,
       graphEndpoint,

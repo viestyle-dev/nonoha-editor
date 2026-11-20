@@ -16,6 +16,8 @@
  *   is not drawn across it.
  * - The source node's `drawAs` (per output) overrides the rule for its data
  *   edges: an escape hatch, not a choice users are expected to make.
+ * - An edge the engine refused (`data.valid === false`) is a line whatever
+ *   its output's edges are: it has to be seen to be fixed.
  *
  * Layers: the longest path from the graph's sources over data edges.
  */
@@ -29,6 +31,7 @@ export interface DrawnEdge {
   sourceHandle?: string | null
   target: string
   targetHandle?: string | null
+  data?: { valid?: unknown }
 }
 
 export interface EdgeDrawings {
@@ -126,8 +129,9 @@ export function edgeDrawings(
       drawAs = settings || layers.size >= BROADCAST_LAYERS ? "reference" : "line"
     }
     for (const e of list) {
-      of.set(e.id, drawAs)
-      if (drawAs === "reference") mark(key, e, "references")
+      const drawing = e.data?.valid === false ? "line" : drawAs
+      of.set(e.id, drawing)
+      if (drawing === "reference") mark(key, e, "references")
     }
   })
   for (const e of edges) {

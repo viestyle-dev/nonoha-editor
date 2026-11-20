@@ -47,8 +47,8 @@ graph (provider in `app/graphs/page.tsx`).
 |---|---|---|
 | Port activity | `activity-output-handle.tsx`, `basic-port-node.tsx` | Ports register while mounted; each re-renders only on its own entry (`useSyncExternalStore`), never via `setNodes`. Rate badge at ≥100% zoom in a fixed-width slot |
 | Tooltip | same | Type, Hz, min/max/mean, last value |
-| Peek | `peek-popover.tsx`, `inspected-value-view.tsx` | Click a port name. Presentation from `interpretValue` (shape only); RGB/BGR remembered per port |
-| Pin | `PeekPopover` → page `handlePinRequest` | Display node next to the node (or above the `$graph` frame) + dashed edge |
+| Peek | `peek-popover.tsx`, `inspected-value-view.tsx` | Click a port name. Presentation from `interpretValue` (shape only); bytes show as the image they encode, as a plot only when they do not decode; RGB/BGR remembered per port |
+| Pin | `PeekPopover` → page `handlePinRequest` | Display node next to the node (or above the `$graph` frame) + dashed edge; from a graph output port, a solid edge from the port. A graph input has nothing to pin to |
 | In-node preview | `node-preview.tsx` | Eye icon in the node toolbar; saved as `nodes.<name>.preview`; samples only on screen, at most 8 |
 | Status | `inspector-status-button.tsx` | On / slowed / paused (reason) / off; resume; default on/off (localStorage) |
 | About / compat | `components/about-dialog.tsx`, `engine-about.tsx`, `lib/engine-compat.ts` | Supported engines `>=1.0.0 <2.0.0`; outside: chip + one snackbar, never blocks |
@@ -67,7 +67,8 @@ Every display node reads its handles through
   (`IMAGE_WATCH`, `SNAPSHOT_WATCH`, `LATEST_WATCH`, `CONTROL_WATCH`, or the
   default `batch: "since"` for accumulating charts)
 
-An input takes one connection; a new one replaces it. A selected dashed edge
+An input takes one connection; a new one replaces it (the replaced edge's
+waypoints go with it). A selected dashed edge
 offers "Make output port": it creates `$output:<port>`, connects the engine
 node to it and feeds the display from the port (solid).
 

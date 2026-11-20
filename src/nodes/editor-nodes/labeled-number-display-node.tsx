@@ -9,7 +9,6 @@ import {
 import {
   Button,
   Collapse,
-  Divider,
   Paper,
   TextField,
   Typography,
@@ -23,11 +22,11 @@ import {
 import { READOUT_WATCH, useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { useThemeStore } from "@/src/stores/theme-store"
-import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { NodeHandleLeft } from "@/src/components/node-handle"
 import { ExpandLess, ExpandMore } from "@mui/icons-material"
 import { enqueueSnackbar } from "notistack"
+import { EditorNodeHeader } from "@/src/components/node-header"
 
 const LabelDisplay = memo(
   (props: {
@@ -158,7 +157,6 @@ export const LabeledNumberDisplayNode = memo(
       )
     }, [props.id, setNodes])
 
-    const [titleEditing, setTitleEditing] = useState(false)
 
     useEffect(() => {
       // Parse mapper when inputMapper changes
@@ -233,24 +231,7 @@ export const LabeledNumberDisplayNode = memo(
         }}
       >
         <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />
-        <div
-          className={titleEditing ? "" : "drag-handle"}
-          css={css({
-            width: "100%",
-            padding: 8,
-            // backgroundColor: surfaceContainerHighColor,
-          })}
-        >
-          <EditableTypography
-            editing={titleEditing}
-            onEditingChange={editing => {
-              setTitleEditing(editing)
-            }}
-            text={props.data.label}
-            fontSize={14}
-          />
-        </div>
-        <Divider />
+        <EditorNodeHeader label={props.data.label} />
         <div
           css={css`
             display: flex;

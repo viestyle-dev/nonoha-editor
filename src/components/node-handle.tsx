@@ -4,10 +4,9 @@ import { Handle, Position } from "@xyflow/react"
 import { forwardRef, MouseEvent, ReactNode } from "react"
 
 import { portRing } from "@/src/components/port-ring"
+import { ROW } from "@/src/lib/graph/grid"
 import { useThemeStore } from "@/src/stores/theme-store"
 
-/** Height of one handle row, inputs and outputs alike. */
-const ROW_HEIGHT = 20
 const HANDLE_SIZE = 16
 
 const row = css({
@@ -16,7 +15,7 @@ const row = css({
   position: "relative",
   alignItems: "center",
   minWidth: 8,
-  height: ROW_HEIGHT,
+  height: ROW, // a handle is in the middle of its row: the ports of every node are on the grid's rows (grid.ts)
 })
 const leftLabel = css({ paddingLeft: 8, whiteSpace: "nowrap" })
 const rightLabel = css({ paddingRight: 8, whiteSpace: "nowrap" })

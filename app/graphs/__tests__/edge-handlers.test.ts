@@ -143,6 +143,7 @@ function makeMockEditorModelUpdater() {
     removeEditorEdge: vi.fn(),
     getNodeData: vi.fn(),
     patchNodeData: vi.fn(),
+    replaceNodeData: vi.fn(),
   }
 }
 

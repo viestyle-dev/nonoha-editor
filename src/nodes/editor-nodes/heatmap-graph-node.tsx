@@ -18,7 +18,6 @@ import { useThemeStore } from "@/src/stores/theme-store"
 import {
   Button,
   Collapse,
-  Divider,
   FormControl,
   InputLabel,
   MenuItem,
@@ -30,7 +29,6 @@ import {
 import { NodeHandleLeft } from "@/src/components/node-handle"
 import dynamic from "next/dynamic"
 import { HeatmapPlotData } from "@/src/components/heatmap-graph"
-import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { ExpandLess, ExpandMore } from "@mui/icons-material"
 import ErrorOutlineIcon from "@mui/icons-material/ErrorOutline"
@@ -44,6 +42,7 @@ import {
   ColormapName,
   resolveColormap,
 } from "@/src/lib/colormaps"
+import { EditorNodeHeader } from "@/src/components/node-header"
 
 const HeatmapGraph = dynamic(() => import("@/src/components/heatmap-graph"), {
   ssr: false,
@@ -326,7 +325,6 @@ export const HeatmapGraphNode = memo((props: NodeProps<HeatmapGraphNode>) => {
       onClear: () => setGraphRevision(prev => prev + 1),
     })
 
-  const [titleEditing, setTitleEditing] = useState(false)
 
   const editorModelUpdater = props.data.editorModelUpdater
 
@@ -434,23 +432,7 @@ export const HeatmapGraphNode = memo((props: NodeProps<HeatmapGraphNode>) => {
       }}
     >
       <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />
-      <div
-        className={titleEditing ? "" : "drag-handle"}
-        css={css({
-          width: "100%",
-          padding: 8,
-        })}
-      >
-        <EditableTypography
-          editing={titleEditing}
-          onEditingChange={editing => {
-            setTitleEditing(editing)
-          }}
-          text={props.data.label}
-          fontSize={14}
-        />
-      </div>
-      <Divider />
+      <EditorNodeHeader label={props.data.label} />
 
       <div
         css={css`

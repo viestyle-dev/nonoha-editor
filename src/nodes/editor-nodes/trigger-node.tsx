@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState } from "react"
+import { memo, useCallback, useRef } from "react"
 import {
   Node,
   NodeProps,
@@ -8,7 +8,6 @@ import {
 } from "@xyflow/react"
 import {
   Button,
-  Divider,
   Paper,
   ToggleButton,
   ToggleButtonGroup,
@@ -23,8 +22,8 @@ import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { NodeHandleRight } from "@/src/components/node-handle"
-import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
+import { EditorNodeHeader } from "@/src/components/node-header"
 
 export type TriggerNode = Node<{
   label: string
@@ -108,7 +107,6 @@ export const TriggerNode = memo((props: NodeProps<TriggerNode>) => {
     })
   }
 
-  const [titleEditing, setTitleEditing] = useState(false)
 
   return (
     <Paper
@@ -127,24 +125,7 @@ export const TriggerNode = memo((props: NodeProps<TriggerNode>) => {
       }}
     >
       <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />
-      <div
-        className={titleEditing ? "" : "drag-handle"}
-        css={css({
-          width: "100%",
-          padding: 8,
-          // backgroundColor: surfaceContainerHighColor,
-        })}
-      >
-        <EditableTypography
-          editing={titleEditing}
-          onEditingChange={editing => {
-            setTitleEditing(editing)
-          }}
-          text={props.data.label}
-          fontSize={14}
-        />
-      </div>
-      <Divider />
+      <EditorNodeHeader label={props.data.label} />
       <div
         css={css({
           display: "flex",

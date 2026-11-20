@@ -28,7 +28,6 @@ import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { IMAGE_WATCH, useEditorInput } from "@/src/hooks/use-editor-input"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { NodeHandleLeft } from "@/src/components/node-handle"
-import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { useImageFramePainter } from "@/src/hooks/use-image-frame-painter"
 import {
@@ -37,6 +36,7 @@ import {
   resolveColorOrder,
   resolveDecodeFormat,
 } from "@/src/lib/image-frame"
+import { EditorNodeHeader } from "@/src/components/node-header"
 
 /**
  * Inner component that handles canvas rendering.
@@ -100,7 +100,6 @@ export type ImageDisplayNode = Node<{
 export const ImageDisplayNode = memo(
   (props: NodeProps<ImageDisplayNode>) => {
     const [{ colors }] = useThemeStore()
-    const [titleEditing, setTitleEditing] = useState(false)
     const [detailsOpen, setDetailsOpen] = useState(false)
     const [imageError, setImageError] = useState<string | undefined>()
     const { setNodes } = useReactFlow()
@@ -215,18 +214,7 @@ export const ImageDisplayNode = memo(
             </NodeResizeControl>
           )}
           <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />
-          <div
-            className={titleEditing ? "" : "drag-handle"}
-            css={css({ width: "100%", padding: 8 })}
-          >
-            <EditableTypography
-              editing={titleEditing}
-              onEditingChange={editing => setTitleEditing(editing)}
-              text={props.data.label}
-              fontSize={14}
-            />
-          </div>
-          <Divider />
+          <EditorNodeHeader label={props.data.label} />
           <div css={css({ display: "flex", flexDirection: "row" })}>
             <div css={css({ display: "flex", flexDirection: "column" })}>
               <NodeHandleLeft id="image" label="image" />

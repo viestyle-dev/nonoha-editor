@@ -102,7 +102,13 @@ export const NodePreview = memo(function NodePreview({ nodeId, port }: { nodeId:
       css={css({ margin: "4px 8px 8px", borderRadius: 6, overflow: "hidden", position: "relative" })}
     >
       {live ? (
-        <InspectedValueView portRef={portRef} colorOrder={colorOrder} paused={!visible || !granted} height={96} />
+        <InspectedValueView
+          key={port}
+          portRef={portRef}
+          colorOrder={colorOrder}
+          paused={!visible || !granted}
+          height={96}
+        />
       ) : null}
       {(!live || (visible && !granted)) && (
         <Typography

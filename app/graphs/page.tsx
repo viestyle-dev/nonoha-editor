@@ -103,6 +103,7 @@ import { EdgeDrawingsProvider } from "@/src/hooks/use-edge-drawing"
 import {
   parseEdgeEndpoint,
   WAYPOINT_MERGE_RADIUS,
+  cleanupOrphanWaypoints,
   cleanupWaypointFromEdges,
   handleEdgesDelete,
   handleNodesDelete,
@@ -130,6 +131,7 @@ import { ViewCatalogProvider, useViewCatalog } from "@/src/views/view-catalog"
 import { builtinViews, type DefinedView } from "nonoha-views"
 import { EDITOR_NODE_SPEC_BY_TYPE } from "@/src/editor-nodes/specs"
 import { findFreeSpot, rectsOverlap, type Rect } from "@/src/lib/graph/free-spot"
+import { ROW, snapOffset, snapPoint, SNAP_GRID } from "@/src/lib/graph/grid"
 import type { ValueKind } from "@/src/inspector/interpret"
 
 const GRAPH_EDIT_DISABLED =
@@ -140,7 +142,6 @@ const BUILTIN_VIEWS: readonly DefinedView[] = builtinViews
 
 // <ReactFlow> props that are arrays: one instance each, so a re-render (every
 // drag step) does not hand React Flow a new value to store and announce.
-const SNAP_GRID: [number, number] = [20, 20]
 const PAN_ON_DRAG = [1, 2]
 
 /** Add-menu entries for the views in the catalog (one PluginViewNode prototype each). */
@@ -459,6 +460,8 @@ function PageInner() {
       )
       for (const edge of replaced) updater?.removeEditorEdge(edge.id)
       const replacedIds = new Set(replaced.map(e => e.id))
+      // The replaced edge's waypoints go with it (unless another edge passes them)
+      if (updater && replacedIds.size) cleanupOrphanWaypoints(replacedIds, current, setNodes, updater)
       setEdges(eds =>
         addEdge(
           {
@@ -482,7 +485,7 @@ function PageInner() {
         connection.targetHandle,
       )
     },
-    [setEdges],
+    [setEdges, setNodes],
   )
 
   const onConnectNode = useCallback(
@@ -660,8 +663,9 @@ function PageInner() {
     [setEdges, connectEditorInput],
   )
 
-  // Pin from a peek popover: a display node next to the engine node,
-  // connected with a dashed (inspector) edge.
+  // Pin from a peek popover: a display node next to the source, connected
+  // with a dashed (inspector) edge from an engine node's output, or with a
+  // solid edge from a graph output port (every value).
   const handlePinRequest = useCallback(
     (request: PinRequest) => {
       const instance = reactFlowInstanceRef.current
@@ -670,7 +674,10 @@ function PageInner() {
       const target = PIN_TARGETS[request.kind]
       if (!instance || !updater || !endpoint || !target) return
 
-      const source = instance.getInternalNode(request.ref.node)
+      const graphPort = request.ref.node === ""
+      const sourceId = graphPort ? `$output:${request.ref.port}` : request.ref.node
+      const label = graphPort ? request.ref.port : `${request.ref.node}.${request.ref.port}`
+      const source = instance.getInternalNode(sourceId)
       const origin = source?.internals.positionAbsolute ?? { x: 0, y: 0 }
       const width = source?.measured.width ?? 200
       const size = EDITOR_NODE_SPEC_BY_TYPE.get(target.type)?.size
@@ -698,8 +705,7 @@ function PageInner() {
           { columns: 12, rows: 1, columnWidth: box.width + 40 },
         )
       }
-      const x = Math.round(spot.x / 20) * 20
-      const y = Math.round(spot.y / 20) * 20
+      const { x, y } = snapPoint(spot)
       // Images keep the peek's channel order; charts record right away.
       const nodeData: Record<string, unknown> =
         target.type === "ImageDisplayNode" ? { colorOrder: request.colorOrder ?? "rgb" } : { recordOnOpen: true }
@@ -711,7 +717,7 @@ function PageInner() {
           type: target.type,
           position: { x, y },
           data: {
-            label: `${request.ref.node}.${request.ref.port}`,
+            label,
             graphEndpoint: endpoint,
             editorModelUpdater: updater,
             nodeData,
@@ -722,17 +728,17 @@ function PageInner() {
       )
       setNodes(nds => [...nds, node])
       updater.addEditorNode(node.id, target.type, x, y)
-      updater.setNodeLabel(node.id, `${request.ref.node}.${request.ref.port}`)
+      updater.setNodeLabel(node.id, label)
       if (size) updater.updateNodeSize(node.id, size.width, size.height)
       updater.patchNodeData(node.id, nodeData)
       connectEditorInput(
         {
-          source: request.ref.node,
-          sourceHandle: request.ref.port,
+          source: sourceId,
+          sourceHandle: graphPort ? null : request.ref.port,
           target: node.id,
           targetHandle: target.handle,
         },
-        "node",
+        graphPort ? "output" : "node",
       )
     },
     [setNodes, connectEditorInput],
@@ -790,7 +796,7 @@ function PageInner() {
       ...edge,
       valueTypes: output ? output.values.map(v => v.type).join(",") : "",
       // Port nodes live in the $graph frame: position relative to it.
-      position: { x: source.position.x + width + 60, y: source.position.y },
+      position: snapPoint({ x: source.position.x + width + 60, y: source.position.y }),
     })
   }, [])
 
@@ -840,10 +846,9 @@ function PageInner() {
       clientY = touch.clientY
     }
 
-    const flowPosition = reactFlowInstanceRef.current?.screenToFlowPosition({
-      x: clientX,
-      y: clientY,
-    }) ?? { x: 0, y: 0 }
+    const flowPosition = snapPoint(
+      reactFlowInstanceRef.current?.screenToFlowPosition({ x: clientX, y: clientY }) ?? { x: 0, y: 0 },
+    )
 
     setEdgeDropMenuState({
       screenPosition: { x: clientX, y: clientY },
@@ -1072,12 +1077,15 @@ function PageInner() {
               ? (node.data as NodeDataStructure).nodeData
               : null
 
+          const view = node.data as { preview?: string; drawAs?: ClipboardNodeData["drawAs"] }
           return {
             ...baseData,
             name: originalName,
             type: nodeData?.type || node.type || "default",
             properties: nodeData?.properties || {},
             inputs: nodeData?.inputs || undefined,
+            ...(view.preview ? { preview: view.preview } : null),
+            ...(view.drawAs ? { drawAs: view.drawAs } : null),
           }
         }
 
@@ -1126,6 +1134,8 @@ function PageInner() {
               width: width,
               height: height,
               data: editorSpecificData, // This now includes comment, etc.
+              // A title of its own (a pinned display, a view); without one the id shows
+              ...(typeof nodeData.label === "string" && nodeData.label !== node.id ? { label: nodeData.label } : null),
             },
           }
         }
@@ -1137,12 +1147,14 @@ function PageInner() {
           const nodeData = node.data as {
             port?: { values?: { type: string }[] }
             defaultValue?: unknown
+            drawAs?: ClipboardNodeData["drawAs"]
           }
           const values = nodeData?.port?.values || [{ type: "any" }]
           return {
             ...baseData,
             name: node.id,
             type: "input",
+            ...(nodeData.drawAs ? { drawAs: nodeData.drawAs } : null),
             portData: {
               portName: portName,
               values: values,
@@ -1293,9 +1305,9 @@ function PageInner() {
       const viewportX = viewport ? -viewport.x / viewport.zoom : 0
       const viewportY = viewport ? -viewport.y / viewport.zoom : 0
 
-      // Add offset from viewport top-left corner
-      const pasteOffsetX = viewportX + 100
-      const pasteOffsetY = viewportY + 100
+      // Near the viewport's top-left corner, moved by whole grid steps: the
+      // pasted nodes keep their places among themselves and on the grid
+      const pasteOffset = snapOffset({ x: minX, y: minY }, { x: viewportX + 100, y: viewportY + 100 })
 
       // Create nodes via API and track name mapping for edges
       const createdNodes: CreatedNodeResponse[] = []
@@ -1308,8 +1320,8 @@ function PageInner() {
 
       for (const nodeData of clipboardData.nodes) {
         // Calculate new position maintaining relative positions
-        const newX = pasteOffsetX + (nodeData.position?.x || 0) - minX
-        const newY = pasteOffsetY + (nodeData.position?.y || 0) - minY
+        const newX = (nodeData.position?.x || 0) + pasteOffset.x
+        const newY = (nodeData.position?.y || 0) + pasteOffset.y
 
         // Handle different node types
         let createdNode: CreatedNodeResponse
@@ -1505,18 +1517,16 @@ function PageInner() {
           message: `Creating nodes... (${createdNodes.length}/${clipboardData.nodes.length})`,
         }))
 
-        // Update node position via editor model updater (for engine nodes and editor nodes)
-        if (
-          editorModelUpdaterRef.current &&
-          (nodeData.nodeType === "node" ||
-            nodeData.nodeType === "editor" ||
-            !nodeData.nodeType)
-        ) {
+        // Keep where it was pasted (a waypoint's place went with addEditorNode),
+        // its preview and how its outputs are drawn
+        if (editorModelUpdaterRef.current && nodeData.nodeType !== "waypoint") {
           editorModelUpdaterRef.current.updateNodePosition(
             newNodeId,
             newX,
             newY,
           )
+          if (nodeData.preview) editorModelUpdaterRef.current.setNodePreview(newNodeId, nodeData.preview)
+          if (nodeData.drawAs) editorModelUpdaterRef.current.setNodeDrawAs(newNodeId, nodeData.drawAs)
         }
 
         // Update input dispatch_flags if they exist in clipboard data (only for engine nodes)
@@ -1629,12 +1639,12 @@ function PageInner() {
         let edgeId: string | undefined
 
         // Handle different edge type combinations
-        if (sourceNodeType === "editor" && targetNodeType === "input") {
-          // Editor -> Input edge
-          // For input nodes, targetHandle should be null when it's empty from parsing
-          const sourceHandle = sourceParsed.portHandle
-          const targetHandle =
-            targetParsed.portHandle === "" ? null : targetParsed.portHandle
+        if (sourceNodeType === "editor" || targetNodeType === "editor") {
+          // Edges of the editor's own (kept in its model): editor -> input,
+          // output -> editor, editor -> editor, and node -> editor (a
+          // display fed by the inspector). A port node has no handle.
+          const sourceHandle = sourceParsed.portHandle === "" ? null : sourceParsed.portHandle
+          const targetHandle = targetParsed.portHandle === "" ? null : targetParsed.portHandle
 
           edgeId = getEditorEdgeId(
             newSourceName,
@@ -1650,51 +1660,6 @@ function PageInner() {
               sourceHandle,
               newTargetName,
               targetHandle,
-              mappedWaypoints,
-            )
-            success = true
-          }
-        } else if (sourceNodeType === "output" && targetNodeType === "editor") {
-          // Output -> Editor edge
-          // For output nodes, sourceHandle should be null when it's empty from parsing
-          const sourceHandle =
-            sourceParsed.portHandle === "" ? null : sourceParsed.portHandle
-          const targetHandle = targetParsed.portHandle
-
-          edgeId = getEditorEdgeId(
-            newSourceName,
-            sourceHandle,
-            newTargetName,
-            targetHandle,
-          )
-
-          if (editorModelUpdaterRef.current) {
-            editorModelUpdaterRef.current.addEditorEdge(
-              edgeId,
-              newSourceName,
-              sourceHandle,
-              newTargetName,
-              targetHandle,
-              mappedWaypoints,
-            )
-            success = true
-          }
-        } else if (sourceNodeType === "editor" && targetNodeType === "editor") {
-          // Editor -> Editor edge
-          edgeId = getEditorEdgeId(
-            newSourceName,
-            sourceParsed.portHandle,
-            newTargetName,
-            targetParsed.portHandle,
-          )
-
-          if (editorModelUpdaterRef.current) {
-            editorModelUpdaterRef.current.addEditorEdge(
-              edgeId,
-              newSourceName,
-              sourceParsed.portHandle,
-              newTargetName,
-              targetParsed.portHandle,
               mappedWaypoints,
             )
             success = true
@@ -1798,6 +1763,22 @@ function PageInner() {
         }))
       }
 
+      // Titles of the pasted editor nodes. A pinned display is titled after
+      // its source ("Node.port"): fed by a pasted copy, it names the copy.
+      const pastedLabels = new Map<string, string>()
+      clipboardData.nodes.forEach((nodeData, index) => {
+        const label = nodeData.editorData?.label
+        if (label !== undefined) pastedLabels.set(createdNodes[index].name, label)
+      })
+      for (const result of createdEdgeResults) {
+        if (!result.success || result.sourceNodeType !== "node" || result.targetNodeType !== "editor") continue
+        const from = parseEdgeEndpoint(result.edgeData.source)
+        if (pastedLabels.get(result.newTargetName) === `${from.nodeName}.${from.portHandle}`) {
+          pastedLabels.set(result.newTargetName, `${result.newSourceName}.${from.portHandle}`)
+        }
+      }
+      pastedLabels.forEach((label, nodeId) => editorModelUpdaterRef.current?.setNodeLabel(nodeId, label))
+
       const successfulEdges = createdEdgeResults.filter(
         result => result.success,
       ).length
@@ -1831,6 +1812,8 @@ function PageInner() {
                   variant: getEngineNodeVariant(createdNode.type),
                   nodeData: nodeDataWithInputs,
                   graphEndpoint: refGraphEndpoint.current,
+                  preview: originalNodeData.preview,
+                  drawAs: originalNodeData.drawAs,
                 },
                 position: position,
                 type: getEngineNodeUIType(createdNode.type),
@@ -1851,7 +1834,7 @@ function PageInner() {
               // Combine editor-specific data with runtime objects
               const nodeData = {
                 nodeData: editorSpecificData, // Persisted settings grouped in nodeData
-                label: createdNode.name,
+                label: pastedLabels.get(createdNode.name) ?? createdNode.name,
                 graphEndpoint: refGraphEndpoint.current,
                 editorModelUpdater: editorModelUpdaterRef.current,
               }
@@ -1921,6 +1904,7 @@ function PageInner() {
                   },
                   graphEditDisabled: false,
                   defaultValue: originalNodeData.portData?.defaultValue,
+                  drawAs: originalNodeData.drawAs,
                 },
                 position: position,
                 type: nodeType === "input" ? "BasicPortNode" : "BasicPortNode",
@@ -2591,7 +2575,7 @@ function PageInner() {
               onInit={onFlowInit}
               connectionLineComponent={EdgeConnectionLine}
             >
-              <Background gap={20} variant={BackgroundVariant.Dots} />
+              <Background gap={ROW} variant={BackgroundVariant.Dots} />
               <Controls />
               <EdgeFocus />
               <ViewportPortal>

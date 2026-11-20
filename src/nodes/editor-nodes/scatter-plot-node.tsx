@@ -8,7 +8,6 @@ import {
 import {
   Button,
   Collapse,
-  Divider,
   FormControlLabel,
   Paper,
   Switch,
@@ -29,10 +28,10 @@ import { useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { TimeSeriesPlotData } from "@/src/components/time-series-graph"
 import { useThemeStore } from "@/src/stores/theme-store"
-import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { ExpandLess, ExpandMore } from "@mui/icons-material"
 import { ScatterPlotData, ScatterPlotLayout } from "@/src/components/scatter-plot"
+import { EditorNodeHeader } from "@/src/components/node-header"
 const ScatterPlot = dynamic(() => import("@/src/components/scatter-plot"), {
   ssr: false,
 })
@@ -201,7 +200,6 @@ export const ScatterPlotNode = memo((props: NodeProps<ScatterPlotNode>) => {
 
   const [isRecording, setIsRecording] = useState(false)
 
-  const [titleEditing, setTitleEditing] = useState(false)
 
   return (
     <Paper
@@ -219,23 +217,7 @@ export const ScatterPlotNode = memo((props: NodeProps<ScatterPlotNode>) => {
       }}
     >
       <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />
-      <div
-        className={titleEditing ? "" : "drag-handle"}
-        css={css({
-          width: "100%",
-          padding: 8,
-        })}
-      >
-        <EditableTypography
-          editing={titleEditing}
-          onEditingChange={editing => {
-            setTitleEditing(editing)
-          }}
-          text={props.data.label}
-          fontSize={14}
-        />
-      </div>
-      <Divider />
+      <EditorNodeHeader label={props.data.label} />
       <div
         css={css({
           display: "flex",

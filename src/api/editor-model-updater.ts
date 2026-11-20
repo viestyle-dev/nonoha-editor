@@ -95,15 +95,18 @@ export function makeEditorModelUpdater(
     /**
      * How a node's outputs are drawn against the rule (edge-drawing.ts):
      * output name ("" for a graph port) -> "line" | "reference"; null clears.
+     * The stored map is replaced: a PATCH would merge into it and keep an
+     * override that was dropped.
      */
     setNodeDrawAs(nodeName: string, drawAs: Record<string, "line" | "reference"> | null) {
       promiseChain = promiseChain
         .then(() =>
-          fetch(`${editorModelUrl}?query=nodes.${nodeName}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ drawAs }),
-          })
+          fetch(
+            `${editorModelUrl}?query=nodes.${nodeName}.drawAs`,
+            drawAs
+              ? { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(drawAs) }
+              : { method: "DELETE" },
+          )
         )
         .then(() => {})
         .catch(error => {
@@ -223,6 +226,26 @@ export function makeEditorModelUpdater(
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(sanitized),
+          })
+        )
+        .then(() => {})
+        .catch(error => {
+          console.log(error)
+        })
+    },
+
+    /**
+     * Replace one key of a node's data with `value`. For a map kept as a
+     * whole (a view's settings): patchNodeData merges maps, so a key removed
+     * from one would stay stored.
+     */
+    replaceNodeData(nodeId: string, key: string, value: unknown) {
+      promiseChain = promiseChain
+        .then(() =>
+          fetch(`${editorModelUrl}?query=nodes.${nodeId}.data.${key}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(value),
           })
         )
         .then(() => {})

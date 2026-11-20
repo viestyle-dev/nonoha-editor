@@ -29,6 +29,7 @@ import {
   type Point,
 } from "../lib/graph/edge-path"
 import { edgeWeight } from "../lib/graph/edge-weight"
+import { snapWaypointCenter } from "../lib/graph/grid"
 import { edgeDrawings, type DrawAs } from "../lib/graph/edge-drawing"
 import { drawAsOf, EdgeLabelPortal, useEdgeDrawing, useOutputMarks } from "../hooks/use-edge-drawing"
 import {
@@ -171,12 +172,19 @@ export default function BasicNodeEdge({
     return props.sourceHandleId ? `${label}.${props.sourceHandleId}` : label
   }, [getNode, props.source, props.sourceHandleId])
 
-  /** Select the source node (its references show), and with `center` go to it. */
+  /**
+   * Select the source node (its references show), and with `center` go to it.
+   * A node that cannot be selected (a port of a read-only graph) stays so:
+   * selecting it would offer what a selection offers, its delete button.
+   */
   const selectSource = useCallback(
     (event: MouseEvent, center: boolean) => {
       event.stopPropagation()
       setNodes(nodes =>
-        nodes.map(node => (Boolean(node.selected) === (node.id === props.source) ? node : { ...node, selected: node.id === props.source })),
+        nodes.map(node => {
+          const selected = node.id === props.source && node.selectable !== false
+          return Boolean(node.selected) === selected ? node : { ...node, selected }
+        }),
       )
       setEdges(edges => edges.map(edge => (edge.selected ? { ...edge, selected: false } : edge)))
       if (center) setCenter(sourceX, sourceY, { zoom: getZoom(), duration: 300 })
@@ -262,7 +270,8 @@ export default function BasicNodeEdge({
       if (!editorModelUrl) return
       e.stopPropagation()
 
-      const flowPos = screenToFlowPosition({ x: e.clientX, y: e.clientY })
+      // Where it was clicked, on the grid as a drag would leave it
+      const flowPos = snapWaypointCenter(screenToFlowPosition({ x: e.clientX, y: e.clientY }))
       const wpId = generateWaypointId()
       const source: Point = { x: sourceX, y: sourceY }
       const target: Point = { x: targetX, y: targetY }

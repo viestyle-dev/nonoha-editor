@@ -20,6 +20,7 @@ import {
 import { Close } from "@mui/icons-material"
 import { css } from "@emotion/react"
 import { Node, useReactFlow } from "@xyflow/react"
+import { snapPoint } from "@/src/lib/graph/grid"
 import { GraphEndpoint } from "nonoha-client-js"
 import { enqueueSnackbar } from "notistack"
 import {
@@ -135,7 +136,7 @@ export function PortAddDialog({
         ? `$input:${portData.name}`
         : `$output:${portData.name}`
 
-    const position = initialPosition ?? screenToFlowPosition({ x: 100, y: 100 })
+    const position = initialPosition ?? snapPoint(screenToFlowPosition({ x: 100, y: 100 }))
 
     onPortAdd({
       id: nodeId,
@@ -422,7 +423,7 @@ export function NodeAddDialog({
               // Views keep their title; other editor nodes are named by id.
               label: entry.prototype.catalog ? entry.prototype.data.label : uniqueId,
             },
-            position: screenToFlowPosition({ x: 100, y: 100 }),
+            position: snapPoint(screenToFlowPosition({ x: 100, y: 100 })),
             dragHandle: ".drag-handle",
           } as Node),
         )
@@ -454,7 +455,7 @@ export function NodeAddDialog({
               nodeData: nodeData,
               graphEndpoint: graphEndpoint,
             },
-            position: screenToFlowPosition({ x: 100, y: 100 }),
+            position: snapPoint(screenToFlowPosition({ x: 100, y: 100 })),
             type: getEngineNodeUIType(nodeData.type),
             dragHandle: ".drag-handle",
             parentId: "$graph",

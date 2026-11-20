@@ -6,7 +6,7 @@ import { useThemeStore } from "@/src/stores/theme-store"
 import { useGraphSessionStore } from "@/src/stores/graph-session-store"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { WaypointContextMenu } from "@/src/components/waypoint-context-menu"
-import { WAYPOINT_SIZE } from "@/src/lib/graph/edge-path"
+import { WAYPOINT_SIZE } from "@/src/lib/graph/grid"
 import { useWaypointUse } from "@/src/hooks/use-edge-drawing"
 
 export type WaypointNode = Node<Record<string, never>>
@@ -19,7 +19,17 @@ export function generateWaypointId(): string {
 /** Above the edges, so a waypoint stays grabbable. */
 export const WAYPOINT_Z_INDEX = 2000
 
-/** A waypoint at `position`: its center, relative to the $graph group (snapped to the grid like a node). */
+/**
+ * Marks a waypoint that only references and displays pass. Their lines are not
+ * drawn (edge-drawing.ts), so the waypoint is neither shown nor grabbable; it
+ * comes back with the lines, while a selection shows them (edge-focus.tsx).
+ */
+export const WAYPOINT_REFERENCE_CLASS = "waypoint-reference"
+
+/**
+ * A waypoint at `position`: its center, relative to the $graph group. Like
+ * any node it is its top-left that sits on the grid (grid.ts).
+ */
 export function waypointNode(id: string, position: XYPosition, selected?: boolean): WaypointNode {
   return {
     id,
@@ -58,10 +68,9 @@ export const WaypointNode = memo(function WaypointNode(
   const [{ editorModelUpdater }] = useGraphSessionStore()
   const editorModelUrl = editorModelUpdater?.editorModelUrl
 
-  // The lines drawn through this waypoint. One that only references and
-  // displays pass (not drawn as lines) is not shown; it comes back with them.
+  // The edges through this waypoint, and how many of them are drawn as lines
   const [edgeCount, lineCount] = useWaypointUse(props.id).split("|").map(Number)
-  const hidden = edgeCount > 0 && lineCount === 0
+  const referenceOnly = edgeCount > 0 && lineCount === 0
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -80,16 +89,16 @@ export const WaypointNode = memo(function WaypointNode(
       {/* A waypoint one edge bends through recedes; one that bundles several stands out */}
       <div
         css={containerStyle}
+        className={referenceOnly ? WAYPOINT_REFERENCE_CLASS : undefined}
         style={{
-          backgroundColor: lineCount > 1 ? colors.surfaceContainerHighest : colors.surfaceContainer,
-          borderColor: lineCount > 1 ? colors.outline : colors.outlineVariant,
+          backgroundColor: edgeCount > 1 ? colors.surfaceContainerHighest : colors.surfaceContainer,
+          borderColor: edgeCount > 1 ? colors.outline : colors.outlineVariant,
           outline: props.selected ? `1px solid ${colors.tertiary}` : "none",
-          color: lineCount > 1 ? colors.onSurface : colors.onSurfaceVariant,
-          ...(hidden ? { visibility: "hidden", pointerEvents: "none" } : null),
+          color: edgeCount > 1 ? colors.onSurface : colors.onSurfaceVariant,
         }}
         onContextMenu={handleContextMenu}
       >
-        {lineCount > 0 ? lineCount : ""}
+        {edgeCount > 0 ? edgeCount : ""}
       </div>
 
       <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />

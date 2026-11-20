@@ -3,13 +3,12 @@
  * Pure functions for SVG path generation — no React dependencies.
  */
 
+import { WAYPOINT_SIZE } from "./grid"
+
 export interface Point {
   x: number
   y: number
 }
-
-/** A waypoint's diameter. Its node's origin is its center: the position is where edges pass. */
-export const WAYPOINT_SIZE = 18
 
 /** Where edges pass a waypoint, from its node's top-left (React Flow's positionAbsolute). */
 export function waypointCenter(topLeft: Point): Point {
@@ -24,7 +23,7 @@ export function samePoints(a: readonly Point[], b: readonly Point[]): boolean {
   return true
 }
 
-/** Straight run out of an output and into an input. */
+/** Straight run out of an output and into an input (ends closer than two leads share the run between them). */
 const LEAD = 16
 /** Corner rounding. */
 const RADIUS = 10
@@ -43,6 +42,7 @@ const LOOP = 40
  *
  * - The rise is taken by one 45° run in the middle of the segment.
  * - A rise larger than the run turns 45°, goes vertical, and turns back.
+ * - Ends closer than two leads step straight down or up, halfway between them.
  * - A segment going back left loops around in a U.
  */
 export function segmentCorners(from: Point, to: Point): Point[] {
@@ -50,21 +50,22 @@ export function segmentCorners(from: Point, to: Point): Point[] {
   const dy = to.y - from.y
   const rise = Math.abs(dy)
   const sign = dy < 0 ? -1 : 1
-  if (dx < 2 * LEAD) {
+  if (dx < 0) {
     const y = rise >= 4 * RADIUS ? (from.y + to.y) / 2 : Math.max(from.y, to.y) + LOOP
     return [from, { x: from.x + LEAD, y: from.y }, { x: from.x + LEAD, y }, { x: to.x - LEAD, y }, { x: to.x - LEAD, y: to.y }, to]
   }
-  if (rise <= dx - 2 * LEAD) {
+  const lead = Math.min(LEAD, dx / 2)
+  if (rise <= dx - 2 * lead) {
     const x = from.x + (dx - rise) / 2
     return [from, { x, y: from.y }, { x: x + rise, y: to.y }, to]
   }
-  const run = (dx - 2 * LEAD) / 2
+  const run = (dx - 2 * lead) / 2
   return [
     from,
-    { x: from.x + LEAD, y: from.y },
-    { x: from.x + LEAD + run, y: from.y + sign * run },
-    { x: from.x + LEAD + run, y: to.y - sign * run },
-    { x: to.x - LEAD, y: to.y },
+    { x: from.x + lead, y: from.y },
+    { x: from.x + lead + run, y: from.y + sign * run },
+    { x: from.x + lead + run, y: to.y - sign * run },
+    { x: to.x - lead, y: to.y },
     to,
   ]
 }

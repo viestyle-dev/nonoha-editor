@@ -63,6 +63,12 @@ function rowSize(shape: readonly number[]): number {
  * Live view of one port, sampled through the inspector. The presentation
  * is guessed from the value's shape (see interpretValue) unless `kind` is
  * given. Draws at most once per animation frame.
+ *
+ * Bytes show as the image they encode (JPEG/PNG/WebP); only bytes that do
+ * not decode show as a plot.
+ *
+ * What it remembers (the detected type, the scalar history, the last frame)
+ * belongs to one port: give it a `key` where the port can change.
  */
 export const InspectedValueView = memo(function InspectedValueView({
   portRef,
@@ -97,8 +103,11 @@ export const InspectedValueView = memo(function InspectedValueView({
   const [text, setText] = useState<string | null>(null)
   const [error, setError] = useState<string | undefined>(undefined)
   const kind = forcedKind ?? detected?.kind
-  const kindRef = useRef(kind)
-  kindRef.current = kind
+  // Read by the painter and the sample callback, which run between renders
+  const forcedKindRef = useRef(forcedKind)
+  forcedKindRef.current = forcedKind
+  const errorRef = useRef(error)
+  errorRef.current = error
   const onDetectedRef = useRef(onDetected)
   onDetectedRef.current = onDetected
 
@@ -115,7 +124,8 @@ export const InspectedValueView = memo(function InspectedValueView({
     const array = value.array as ArrayLike<number>
     const n = rowSize(shape)
     const offset = Math.max(0, shape[0] - 1) * n // last batch row
-    switch (kindRef.current) {
+    // The kind detected with this value, not the rendered one: a render may not have run yet
+    switch (forcedKindRef.current ?? detectedRef.current?.kind) {
       case "vector":
       case "bytes":
         drawVector(ctx, width, height, array, offset, n, themeRef.current)
@@ -158,7 +168,7 @@ export const InspectedValueView = memo(function InspectedValueView({
           setDetected(next)
           onDetectedRef.current?.(next)
         }
-        const current = kindRef.current ?? detectedRef.current!.kind
+        const current = forcedKind ?? detectedRef.current!.kind
         if (current === "text" || current === "bool") {
           const array = value.array as ArrayLike<unknown>
           setText(String(array[array.length - 1]))
@@ -168,21 +178,22 @@ export const InspectedValueView = memo(function InspectedValueView({
           const array = value.array as ArrayLike<number>
           pushScalar(rendererState.current, Number(array[array.length - 1]))
         }
-        if (current === "image" && value.dataType === PortDataType.Uint8 && forcedKind !== "grid") {
+        if (current === "image" && value.dataType === PortDataType.Uint8) {
           acceptImage(value)
           return
         }
-        if (current === "bytes" && !forcedKind) {
-          acceptImage(value) // encoded JPEG/PNG; falls back to the plot on error
-        }
         latest.current = value
+        if (current === "bytes") {
+          acceptImage(value) // decodes off-thread and paints the image; `error` when the bytes are not one
+          if (!errorRef.current) return
+        }
         painter.schedule()
       },
     })
     return () => handle?.unwatch()
   }, [inspector, portRef, paused, painter, acceptImage, forcedKind, connected])
 
-  // Encoded bytes that are not an image: show them as a plot instead.
+  // Bytes that turned out not to be an image: plot the ones already here.
   useEffect(() => {
     if (error && kind === "bytes") painter.schedule()
   }, [error, kind, painter])

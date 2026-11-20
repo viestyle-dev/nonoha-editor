@@ -5,9 +5,9 @@ import {
   samePoints,
   segmentCorners,
   waypointCenter,
-  WAYPOINT_SIZE,
   type Point,
 } from "../edge-path"
+import { WAYPOINT_SIZE } from "../grid"
 
 /** Every run of the corners is horizontal, vertical or 45°. */
 function octilinear(corners: Point[]): boolean {
@@ -39,6 +39,23 @@ describe("segmentCorners", () => {
     expect(c[1].x).toBeGreaterThan(300) // out to the right first
     expect(c[c.length - 2].x).toBeLessThan(0) // in from the left
     expect(Math.max(...c.map(p => p.y))).toBe(50) // below the lower end
+  })
+
+  it("steps between ends closer than two leads, without leaving the box of the two ends", () => {
+    for (const [x, y] of [[0, 60], [10, 0], [20, 5], [20, -80], [31, 30]]) {
+      const c = segmentCorners({ x: 0, y: 0 }, { x, y })
+      expect(octilinear(c)).toBe(true)
+      for (const p of c) {
+        expect(p.x).toBeGreaterThanOrEqual(0)
+        expect(p.x).toBeLessThanOrEqual(x)
+        expect(p.y).toBeGreaterThanOrEqual(Math.min(0, y))
+        expect(p.y).toBeLessThanOrEqual(Math.max(0, y))
+      }
+    }
+    // The step is halfway between the ends
+    expect(segmentCorners({ x: 0, y: 0 }, { x: 20, y: 60 })).toEqual([
+      { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 60 }, { x: 10, y: 60 }, { x: 20, y: 60 },
+    ])
   })
 
   it("stays octilinear for any ends", () => {

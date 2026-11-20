@@ -6,7 +6,7 @@ import {
   useNodesData,
   useReactFlow,
 } from "@xyflow/react"
-import { Button, Divider, Paper, TextField } from "@mui/material"
+import { Button, Paper, TextField } from "@mui/material"
 import { css } from "@emotion/react"
 import {
   PortDataType,
@@ -29,8 +29,8 @@ import { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { NodeHandleRight } from "@/src/components/node-handle"
 import { enqueueSnackbar } from "notistack"
-import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
+import { EditorNodeHeader } from "@/src/components/node-header"
 
 export type ValuesInputNode = Node<{
   label: string
@@ -243,7 +243,6 @@ export const ValuesInputNode = memo((props: NodeProps<ValuesInputNode>) => {
     }
   }
 
-  const [titleEditing, setTitleEditing] = useState(false)
   const [textFieldFocused, setTextFieldFocused] = useState(false)
 
   return (
@@ -262,23 +261,7 @@ export const ValuesInputNode = memo((props: NodeProps<ValuesInputNode>) => {
       }}
     >
       <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />
-      <div
-        className={titleEditing ? "" : "drag-handle"}
-        css={css({
-          width: "100%",
-          padding: 8,
-        })}
-      >
-        <EditableTypography
-          editing={titleEditing}
-          onEditingChange={editing => {
-            setTitleEditing(editing)
-          }}
-          text={props.data.label}
-          fontSize={14}
-        />
-      </div>
-      <Divider />
+      <EditorNodeHeader label={props.data.label} />
       <div
         css={css`
           display: flex;

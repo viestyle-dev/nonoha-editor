@@ -35,12 +35,12 @@ import {
   NumericArray,
 } from "@/src/components/fast-line-chart-graph"
 import { useThemeStore } from "@/src/stores/theme-store"
-import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { useControlGates } from "@/src/hooks/use-control-gates"
 import { ChartControlBar } from "@/src/components/chart-control-bar"
 import { ControlGateHandles } from "@/src/components/control-gate-handles"
 import { ControlModeToggle } from "@/src/components/control-mode-toggle"
+import { EditorNodeHeader } from "@/src/components/node-header"
 
 const FastLineChartGraph = dynamic(
   () => import("@/src/components/fast-line-chart-graph"),
@@ -459,7 +459,6 @@ export const FastLog10LineChartGraphNode = memo(
       return { min: yMin, max: yMax }
     }, [yMin, yMax])
 
-    const [titleEditing, setTitleEditing] = useState(false)
 
     return (
       <Paper
@@ -477,18 +476,7 @@ export const FastLog10LineChartGraphNode = memo(
         }}
       >
         <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />
-        <div
-          className={titleEditing ? "" : "drag-handle"}
-          css={css({ width: "100%", padding: 8 })}
-        >
-          <EditableTypography
-            editing={titleEditing}
-            onEditingChange={editing => setTitleEditing(editing)}
-            text={props.data.label}
-            fontSize={14}
-          />
-        </div>
-        <Divider />
+        <EditorNodeHeader label={props.data.label} />
         <div css={css({ display: "flex", flexDirection: "row", overflow: "hidden" })}>
           <div css={css({ display: "flex", flexDirection: "column" })}>
             <NodeHandleLeft id="xLabels" label="xLabels" />

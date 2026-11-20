@@ -9,7 +9,6 @@ import {
 import {
   Button,
   Collapse,
-  Divider,
   FormControl,
   InputLabel,
   MenuItem,
@@ -30,9 +29,9 @@ import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { BasicPortNode } from "@/src/nodes/engine-nodes/basic-port-node"
 import { useThemeStore } from "@/src/stores/theme-store"
 import { NodeHandleRight } from "@/src/components/node-handle"
-import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { ExpandLess, ExpandMore } from "@mui/icons-material"
+import { EditorNodeHeader } from "@/src/components/node-header"
 
 export type FaderNode = Node<{
   label: string
@@ -233,7 +232,6 @@ export const FaderNode = memo((props: NodeProps<FaderNode>) => {
   )
 
   const [detailsOpen, setDetailsOpen] = useState(false)
-  const [titleEditing, setTitleEditing] = useState(false)
 
   return (
     <Paper
@@ -251,23 +249,7 @@ export const FaderNode = memo((props: NodeProps<FaderNode>) => {
       }}
     >
       <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />
-      <div
-        className={titleEditing ? "" : "drag-handle"}
-        css={css({
-          width: "100%",
-          padding: 8,
-        })}
-      >
-        <EditableTypography
-          editing={titleEditing}
-          onEditingChange={editing => {
-            setTitleEditing(editing)
-          }}
-          text={props.data.label}
-          fontSize={14}
-        />
-      </div>
-      <Divider />
+      <EditorNodeHeader label={props.data.label} />
       <div
         css={css`
           display: flex;

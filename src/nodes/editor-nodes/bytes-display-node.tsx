@@ -9,7 +9,6 @@ import {
 import {
   Button,
   Collapse,
-  Divider,
   Paper,
   TextField,
   Typography,
@@ -23,11 +22,11 @@ import {
 import { READOUT_WATCH, useEditorInput } from "@/src/hooks/use-editor-input"
 import { EditorModelUpdater } from "@/src/api/editor-model-updater"
 import { useThemeStore } from "@/src/stores/theme-store"
-import { EditableTypography } from "@/src/components/editable-typography"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { NodeHandleLeft } from "@/src/components/node-handle"
 import { ExpandLess, ExpandMore } from "@mui/icons-material"
 import { SignalLamp } from "@/src/components/signal-lamp"
+import { EditorNodeHeader } from "@/src/components/node-header"
 
 const BytesDisplay = memo(
   (props: {
@@ -255,7 +254,6 @@ export const BytesDisplayNode = memo((props: NodeProps<BytesDisplayNode>) => {
   }
 
   const [detailsOpen, setDetailsOpen] = useState(false)
-  const [titleEditing, setTitleEditing] = useState(false)
 
   return (
     <Paper
@@ -274,23 +272,7 @@ export const BytesDisplayNode = memo((props: NodeProps<BytesDisplayNode>) => {
       }}
     >
       <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />
-      <div
-        className={titleEditing ? "" : "drag-handle"}
-        css={css({
-          width: "100%",
-          padding: 8,
-        })}
-      >
-        <EditableTypography
-          editing={titleEditing}
-          onEditingChange={editing => {
-            setTitleEditing(editing)
-          }}
-          text={props.data.label}
-          fontSize={14}
-        />
-      </div>
-      <Divider />
+      <EditorNodeHeader label={props.data.label} />
       <div
         css={css`
           display: flex;

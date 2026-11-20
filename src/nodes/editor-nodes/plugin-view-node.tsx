@@ -42,7 +42,7 @@ import { useThemeStore } from "@/src/stores/theme-store"
 import { useNodeFlowColorsStore } from "@/src/stores/node-flow-colors-store"
 import { inputHandleColor } from "@/src/lib/graph/port-colors"
 import { NodeHandleLeft } from "@/src/components/node-handle"
-import { EditableTypography } from "@/src/components/editable-typography"
+import { EditorNodeHeader } from "@/src/components/node-header"
 import { BasicNodeToolbar } from "@/src/components/basic-node-toolbar"
 import { useChartTheme } from "@/src/hooks/use-chart-theme"
 import { useEditorInput } from "@/src/hooks/use-editor-input"
@@ -161,7 +161,6 @@ export const PluginViewNode = memo((props: NodeProps<PluginViewNode>) => {
   const entry = viewKey ? catalog.entries.get(viewKey) : undefined
   // Settings as the view gets them, shown in the settings panel.
   const resolvedSettings = useMemo(() => resolveSettings(entry?.settings, settings), [entry, settings])
-  const [titleEditing, setTitleEditing] = useState(false)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [definition, setDefinition] = useState<DefinedView | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -249,7 +248,7 @@ export const PluginViewNode = memo((props: NodeProps<PluginViewNode>) => {
             : node,
         ),
       )
-      editorModelUpdater.patchNodeData(props.id, { settings: next })
+      editorModelUpdater.replaceNodeData(props.id, "settings", next) // a cleared setting (undefined) leaves the map
     },
     [props.id, setNodes, editorModelUpdater],
   )
@@ -315,21 +314,19 @@ export const PluginViewNode = memo((props: NodeProps<PluginViewNode>) => {
         </NodeResizeControl>
       )}
       <BasicNodeToolbar nodeId={props.id} isVisible={props.selected} />
-      <div className={titleEditing ? "" : "drag-handle"} css={css({ width: "100%", padding: "8px 8px 0" })}>
-        <EditableTypography
-          editing={titleEditing}
-          onEditingChange={editing => setTitleEditing(editing)}
-          text={props.data.label}
-          fontSize={14}
-        />
-        <Typography variant="caption" css={css({ color: colors.onSurfaceVariant })}>
-          {entry?.title ?? "View"} · {origin}
-        </Typography>
-      </div>
-      {/* Inputs beside the view. The row clips the handles at the node's edge
-          into half discs, as on the other nodes. */}
-      <div css={css({ display: "flex", flexGrow: 1, minHeight: 0, gap: 4, padding: "4px 0", overflow: "hidden" })}>
-        <div css={css({ display: "flex", flexDirection: "column", gap: 4, justifyContent: "center" })}>
+      <EditorNodeHeader
+        label={props.data.label}
+        subtitle={
+          <Typography variant="caption" css={css({ color: colors.onSurfaceVariant })}>
+            {entry?.title ?? "View"} · {origin}
+          </Typography>
+        }
+      />
+      {/* Inputs beside the view, from the top in rows like any node's ports
+          (grid.ts). The row clips the handles at the node's edge into half
+          discs, as on the other nodes. */}
+      <div css={css({ display: "flex", flexGrow: 1, minHeight: 0, gap: 4, paddingBottom: 4, overflow: "hidden" })}>
+        <div css={css({ display: "flex", flexDirection: "column" })}>
           {(entry?.inputs ?? []).map(input => (
             <ViewInput
               key={input.name}

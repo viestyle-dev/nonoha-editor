@@ -15,6 +15,8 @@ import { memo, useEffect, useState } from "react"
 import { css } from "@emotion/react"
 import { OpenInNew } from "@mui/icons-material"
 
+import { ROW } from "@/src/lib/graph/grid"
+
 type PopupTextFieldProps = {
   value: string
   onChange: (value: string) => void
@@ -61,7 +63,9 @@ export const PopupTextField = (props: PopupTextFieldProps) => {
             },
             htmlInput: {
               style: {
-                paddingBottom: 1,
+                // One row high (grid.ts): the field fills its property row
+                height: ROW,
+                padding: 0,
               },
             },
           }}
@@ -176,7 +180,7 @@ export const NodePropertyInputField = memo(
             }}
             size="small"
             css={{
-              padding: 1,
+              padding: 0,
             }}
           />
         ) : (
